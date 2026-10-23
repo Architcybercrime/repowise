@@ -609,6 +609,22 @@ def test_how_it_works_fires_on_service_archetype() -> None:
     assert ctx.archetype == "service"
 
 
+def test_how_it_works_reads_an_application_main_as_a_service() -> None:
+    # No dependency manifest inventoried (a Gradle repo): the Boot main alone
+    # says service.
+    from dataclasses import replace
+
+    spec = onboarding.get_spec(SLOT_HOW_IT_WORKS)
+    assert spec is not None
+    main = "provider/src/main/java/org/acme/ServerApplication.java"
+    sig = _signals(files=[_file(main, language="java", is_entry_point=True)])
+    sig = replace(sig, repo_structure=replace(sig.repo_structure, application_mains=[main]))
+    ctx = spec.build_context(sig)
+    assert ctx is not None
+    assert ctx.archetype == "service"
+    assert ctx.archetype_evidence == [f"application main: `{main}`"]
+
+
 def test_how_it_works_fires_on_cli_archetype_via_entry_point() -> None:
     spec = onboarding.get_spec(SLOT_HOW_IT_WORKS)
     assert spec is not None

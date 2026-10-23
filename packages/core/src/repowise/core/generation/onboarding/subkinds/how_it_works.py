@@ -119,9 +119,14 @@ def _classify_archetype(signals: OnboardingSignals) -> tuple[Archetype, list[str
     pipeline_hits = dep_names & _PIPELINE_HINTS
 
     api_contract_count = sum(1 for pf in signals.parsed_files if pf.file_info.is_api_contract)
+    # Read from the code, so it holds where no dependency manifest was inventoried.
+    app_mains = list(getattr(signals.repo_structure, "application_mains", None) or [])
 
-    # Service tilt wins if we have either framework deps or API contract files.
-    if service_hits or api_contract_count > 0:
+    # Service tilt wins on framework deps, API contract files or an application main.
+    if service_hits or api_contract_count > 0 or app_mains:
+        if app_mains:
+            more = f" and {len(app_mains) - 1} more" if len(app_mains) > 1 else ""
+            evidence.append(f"application main: `{app_mains[0]}`{more}")
         if service_hits:
             evidence.append(f"service framework(s) detected: {', '.join(sorted(service_hits))}")
         if api_contract_count:
