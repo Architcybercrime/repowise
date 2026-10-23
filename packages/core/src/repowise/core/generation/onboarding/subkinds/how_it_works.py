@@ -21,6 +21,7 @@ from typing import Literal
 
 import structlog
 
+from ....support_paths import is_example_path
 from ...entry_points import orientation_entry_points
 from ..registry import SubkindSpec, register
 from ..signals import OnboardingSignals, file_layer_map
@@ -120,7 +121,12 @@ def _classify_archetype(signals: OnboardingSignals) -> tuple[Archetype, list[str
 
     api_contract_count = sum(1 for pf in signals.parsed_files if pf.file_info.is_api_contract)
     # Read from the code, so it holds where no dependency manifest was inventoried.
-    app_mains = list(getattr(signals.repo_structure, "application_mains", None) or [])
+    # A sample main under examples/ demonstrates the system rather than being it.
+    app_mains = [
+        p
+        for p in getattr(signals.repo_structure, "application_mains", None) or []
+        if not is_example_path(p)
+    ]
 
     # Service tilt wins on framework deps, API contract files or an application main.
     if service_hits or api_contract_count > 0 or app_mains:

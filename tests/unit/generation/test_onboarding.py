@@ -624,6 +624,12 @@ def test_how_it_works_reads_an_application_main_as_a_service() -> None:
     assert ctx.archetype == "service"
     assert ctx.archetype_evidence == [f"application main: `{main}`"]
 
+    # A sample main shipped with a library does not make the repo a service.
+    sample = "examples/demo/src/main/java/org/acme/DemoApplication.java"
+    sig = replace(sig, repo_structure=replace(sig.repo_structure, application_mains=[sample]))
+    ctx = spec.build_context(sig)
+    assert ctx is None or ctx.archetype != "service"
+
 
 def test_how_it_works_fires_on_cli_archetype_via_entry_point() -> None:
     spec = onboarding.get_spec(SLOT_HOW_IT_WORKS)
