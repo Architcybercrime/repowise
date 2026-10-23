@@ -30,6 +30,10 @@ _KEYS = frozenset({"server.servlet.contextpath", "server.contextpath", "spring.w
 _HINT_RE = re.compile(r"context[-_]?path|base[-_]?path", re.IGNORECASE)
 _PROPERTY_RE = re.compile(r"^\s*([A-Za-z][\w.\-]*)\s*[=:]\s*(\S*)\s*$", re.MULTILINE)
 _OWN_NAMES = frozenset({"application", "bootstrap"})
+# A document scoped to a profile (Boot 2.4+ and the legacy spelling).
+_PROFILE_KEYS = frozenset({"spring.config.activate.onprofile", "spring.profiles"})
+# The document separator of a multi-document ``.properties`` file.
+_PROPERTIES_DOC_RE = re.compile(r"^[#!]---\s*$", re.MULTILINE)
 
 
 def _relaxed(key: str) -> str:
@@ -44,13 +48,19 @@ def _flat(node: Any, key: str = "") -> Iterator[tuple[str, Any]]:
         yield key, node
 
 
-def _values(file: SourceFile) -> set[str]:
+def _docs(file: SourceFile) -> list[list[tuple[str, Any]]]:
+    """Each document's ``(key, value)`` pairs, a profile-scoped document left out:
+    it holds only while that profile is active."""
     if file.path.suffix.lower() == ".properties":
-        pairs: Iterable[tuple[str, Any]] = _PROPERTY_RE.findall(file.text)
+        docs = [_PROPERTY_RE.findall(d) for d in _PROPERTIES_DOC_RE.split(file.text)]
     else:
-        pairs = (kv for doc in load_yaml_docs(file.text) for kv in _flat(doc))
+        docs = [list(_flat(doc)) for doc in load_yaml_docs(file.text)]
+    return [d for d in docs if not any(_relaxed(k) in _PROFILE_KEYS for k, _ in d)]
+
+
+def _values(file: SourceFile) -> set[str]:
     out: set[str] = set()
-    for key, value in pairs:
+    for key, value in (kv for doc in _docs(file) for kv in doc):
         if _relaxed(key) in _KEYS and isinstance(value, str):
             path = value.strip().strip("'\"").rstrip("/").lower()
             if path.startswith("/") and "$" not in path and "{" not in path:

@@ -58,6 +58,8 @@ def test_a_config_servers_app_file_sets_that_services_base_path() -> None:
         ("application.yml", "server:\n  context_path: /legacy\n", "/legacy"),
         ("bootstrap.yml", "spring:\n  webflux:\n    base-path: /flux\n", "/flux"),
         ("application.yml", "server.servlet.context-path: /dotted\n", "/dotted"),
+        # Naming the active profile does not scope the document.
+        ("application.yml", "spring.profiles.active: dev\nserver.context-path: /act\n", "/act"),
     ],
 )
 def test_every_spelling_is_read(name: str, text: str, path: str) -> None:
@@ -82,6 +84,22 @@ def test_every_spelling_is_read(name: str, text: str, path: str) -> None:
         ("cfg/config/application.yml", "server.servlet.context-path: /x\n"),
         # A profile file holds only while that profile is active.
         ("svc/src/main/resources/application-dev.yml", "server.servlet.context-path: /x\n"),
+        # So does a profile-scoped document in the default file, in any spelling.
+        (
+            "svc/src/main/resources/application.yml",
+            "server.port: 80\n---\nspring.config.activate.on-profile: docker\n"
+            "server.servlet.context-path: /x\n",
+        ),
+        (
+            "svc/src/main/resources/application.yml",
+            "server.port: 80\n---\nspring:\n  profiles: docker\n"
+            "server:\n  servlet:\n    context-path: /x\n",
+        ),
+        (
+            "svc/src/main/resources/application.properties",
+            "server.port=80\n#---\nspring.config.activate.on-profile=docker\n"
+            "server.servlet.context-path=/x\n",
+        ),
     ],
 )
 def test_what_is_not_a_base_path(rel: str, text: str) -> None:
