@@ -7,6 +7,7 @@ from pathlib import Path
 
 import networkx as nx
 
+from repowise.core.entry_candidacy import receives_execution
 from repowise.core.ingestion.framework_edges import add_framework_edges
 from repowise.core.ingestion.models import FileInfo, ParsedFile
 from repowise.core.ingestion.parser import ASTParser
@@ -98,17 +99,29 @@ class TestSpringStereotypeEntries:
                 "@Component\npublic class Client {\n  // No @Path here.\n"
                 "  Call<Void> get(@Path(\"id\") Long id);\n}\n"
             ),
+            "Wrapped.java": (
+                "@Component\npublic class Wrapped {\n  Call<Void> get(\n"
+                "      @Path(\"id\") long id,\n      @Path(\"x\") String x);\n}\n"
+            ),
+            "Outer.java": (
+                "@Configuration\npublic class Outer {\n"
+                "  @RestController\n  public static class Inner {}\n}\n"
+            ),
         }
         for name, body in files.items():
             (tmp_path / name).write_text("package com.x;\n" + body)
         parsed = _build_parsed(tmp_path)
         graph = _seed_graph(parsed)
         add_framework_edges(graph, parsed, _ctx(tmp_path, parsed), tech_stack=["spring"])
-        for name in ("Api.java", "Resource.java", "Job.java", "Listener.java"):
+        for name in ("Api.java", "Resource.java", "Job.java", "Listener.java", "Outer.java"):
             assert graph.nodes[name].get("is_entry_point") is True, name
-        for name in ("Validator.java", "Advice.java", "Client.java"):
+        for name in ("Validator.java", "Advice.java", "Client.java", "Wrapped.java"):
             assert not graph.nodes[name].get("is_entry_point"), name
             assert graph.nodes[name].get("is_reachability_root") is True, name
+
+    def test_ejb_schedule_timer_is_an_entry_point(self) -> None:
+        text = "@Singleton\npublic class Timer {\n  @Schedule(hour = \"*\")\n  public void tick() {}\n}\n"
+        assert receives_execution(text)
 
 
 class TestLombokRAC:
