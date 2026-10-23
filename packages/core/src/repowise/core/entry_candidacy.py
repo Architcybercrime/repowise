@@ -147,6 +147,31 @@ def boots_application(language: str, text: str) -> bool:
     )
 
 
+# JVM annotations that make a class where requests or execution enter: HTTP
+# controllers and JAX-RS resources, servlets and socket endpoints, scheduled
+# jobs, message listeners and a framework main. Any other class a framework
+# instantiates (bean, repository, entity, config) is only a reachability root.
+# The annotation must open a line, after other annotations at most, so a
+# comment or a parameter annotation (Retrofit's ``@Path("id") Long id``) does
+# not count. Ceiling: names only, so a custom meta-annotation is missed.
+_JVM_ENTRY_ANNOTATION_RE = re.compile(
+    r"^[ \t]*(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
+    r"@(?:RestController|Controller|Path|WebServlet|ServerEndpoint|GraphQLApi|GrpcService"
+    r"|Scheduled|Schedules|KafkaListener|JmsListener|RabbitListener|SqsListener"
+    r"|StreamListener|MessageDriven|Incoming|QuarkusMain)\b",
+    re.MULTILINE,
+)
+
+
+def receives_execution(text: str) -> bool:
+    """Whether JVM source *text* declares a request or execution entry.
+
+    The JVM framework handlers stamp such a class ``is_entry_point`` and every
+    other class they manage only ``is_reachability_root``.
+    """
+    return _JVM_ENTRY_ANNOTATION_RE.search(text) is not None
+
+
 def is_reachability_root(node_data: Mapping[str, Any]) -> bool:
     """Whether a file node is reached from outside the graph (dead-code exempt).
 
