@@ -34,7 +34,12 @@ from pathspec.patterns.gitwildmatch import GitWildMatchPattern, GitWildMatchPatt
 
 from ..code_origin import CONTENT_TEST_SUFFIXES, declares_test, is_generated_header
 from ..dotnet_test_projects import DotnetTestProjects, read_dotnet_test_projects
-from ..entry_candidacy import conventional_entry_stems, not_an_execution_start
+from ..entry_candidacy import (
+    APPLICATION_MAIN_LANGUAGES,
+    boots_application,
+    conventional_entry_stems,
+    not_an_execution_start,
+)
 from ..owned_paths import MANAGED_FILES, OWNED_PATTERNS, only_repowise_differs
 from ..phpunit_roots import (
     PHPUNIT_CONFIG_NAMES,
@@ -567,11 +572,14 @@ class FileTraverser:
 
         lang_counts: dict[str, int] = {}
         entry_points: list[str] = []
+        application_mains: list[str] = []
 
         for f in files:
             lang_counts[f.language] = lang_counts.get(f.language, 0) + 1
             if f.is_entry_point:
                 entry_points.append(f.path)
+                if f.is_application_main:
+                    application_mains.append(f.path)
 
         # Display-only estimate (~40 bytes/line), so no file is opened to count.
         total_loc = sum(f.size_bytes // 40 for f in files)
@@ -588,6 +596,7 @@ class FileTraverser:
             total_files=len(files),
             total_loc=total_loc,
             entry_points=sorted(entry_points),
+            application_mains=sorted(application_mains),
         )
 
     # ------------------------------------------------------------------
@@ -903,7 +912,9 @@ class FileTraverser:
             rel_str.lower().endswith(CONTENT_TEST_SUFFIXES)
             and declares_test(rel_str, _read_head(abs_path))
         )
-        entry = _is_entry_point(rel_str, abs_path, language) or manifest_entry
+        # A test-scoped ``@SpringBootApplication`` boots a test context, not the system.
+        app_main = not is_test and _boots_application(abs_path, language)
+        entry = _is_entry_point(rel_str, abs_path, language) or manifest_entry or app_main
         return FileInfo(
             path=rel_str,
             abs_path=str(abs_path),
@@ -918,6 +929,7 @@ class FileTraverser:
             is_entry_point=entry and not is_test,
             is_manifest_entry=manifest_entry,
             is_reachability_root=entry,
+            is_application_main=app_main,
         )
 
     def _is_package_root_dir(self, rel_dir: str) -> bool:
@@ -1312,6 +1324,19 @@ def _is_entry_point(rel_str: str, abs_path: Path, language: str) -> bool:
         or _stem_is_entry_point(abs_path)
     )
     return named_entry and not not_an_execution_start(rel_str, language)
+
+
+# Ceiling: a bootstrap call past the first 16 KB is missed. An application
+# main is a short file; reading every JVM file whole would double the walk's I/O.
+_APPLICATION_MAIN_SNIFF_BYTES = 16384
+
+
+def _boots_application(abs_path: Path, language: str) -> bool:
+    """Whether the file starts a framework application (:func:`boots_application`)."""
+    if language not in APPLICATION_MAIN_LANGUAGES:
+        return False
+    head = _head(abs_path, None, _APPLICATION_MAIN_SNIFF_BYTES)
+    return head is not None and boots_application(language, head.decode("utf-8", errors="ignore"))
 
 
 class ConsoleScriptTables(NamedTuple):
