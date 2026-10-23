@@ -125,6 +125,11 @@ records `target_via` (the source) and `target_evidence` (the file).
 | `compose` | `docker-compose*.yml`, `compose*.yml` | Service name, `container_name`, `hostname`; `environment` keys whose value is an address | `build` context (or its Dockerfile's directory), else an image basename equal to a repo alias |
 | `k8s_service` | `*.yaml` under `k8s/`, `deploy/`, `manifests/`, ... | `kind: Service` `metadata.name` | A selector or label value equal to a repo alias, else the manifest's repo when it declares no other Service |
 | `spring_application_name` | `application` / `bootstrap` `.yml` or `.properties` | `spring.application.name` | The module the file sits in |
+| `spring_base_path` | `.yml`, `.yaml`, `.properties` under `resources/`, `config/`, `configs/` or `shared/` | `server.servlet.context-path`, `server.context-path`, `spring.webflux.base-path`: a base path, not a name | A module's own `src/main/resources/application` or `bootstrap` file (not a profile file): that module. A config server's `<app>.yml`: the service named `<app>` |
+
+A base path prefixes every Spring route of its module before matching, so `@PostMapping("/users")`
+under `context-path: /uaa` is `POST /uaa/users`. A module given two different base paths gets
+none.
 
 Each repo is walked once per update for these file names; test, example and build-output
 directories are skipped, and files at the workspace root are read too. A name two files
