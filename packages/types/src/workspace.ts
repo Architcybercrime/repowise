@@ -111,6 +111,59 @@ export interface WorkspaceContractLinkEntry {
   consumer_contract_id?: string | null;
 }
 
+/**
+ * Which way a link between two services runs: `a_to_b` when `a` is the consumer
+ * or dependent, `both` for a co-change (it has no direction).
+ */
+export type ServiceLinkDirection = "a_to_b" | "b_to_a" | "both";
+
+/** What a row between two services is: which of its payload fields is set. */
+export type ServiceLinkEvidence = "contract" | "package" | "co_change";
+
+/**
+ * One piece of evidence behind an edge between two services, each end resolved
+ * to its service the way the system graph was built. Mirrors
+ * `repowise.core.workspace.links_between`.
+ */
+export interface ServiceLinkEntry {
+  /** The system-graph edge kind it folds into. */
+  kind: SystemEdgeKind | (string & {});
+  direction: ServiceLinkDirection;
+  evidence: ServiceLinkEvidence;
+  /** Set when `evidence` is `contract`: a contract link or service link. */
+  link?: WorkspaceContractLinkEntry | null;
+  /** What established each end's contract; null when unknown. */
+  provider_origin?: ContractOriginWire | null;
+  consumer_origin?: ContractOriginWire | null;
+  /** Set when `evidence` is `package`. */
+  package_dep?: WorkspacePackageDepEntry | null;
+  /** Set when `evidence` is `co_change`. */
+  co_change?: WorkspaceCoChangeEntry | null;
+}
+
+export interface ServiceLinksTotal {
+  kind: SystemEdgeKind | (string & {});
+  direction: ServiceLinkDirection;
+  count: number;
+}
+
+/** `GET /api/workspace/system-graph/links`: one page of rows between `a` and `b`. */
+export interface ServiceLinksBetween {
+  a: string;
+  b: string;
+  /** The graph and the contracts record different repo heads; rows may be missing. */
+  stale_graph?: boolean;
+  /** Ordered by direction, kind, evidence, then ids and files. */
+  links: ServiceLinkEntry[];
+  /** Rows matching every filter; the page is cut from these. */
+  total: number;
+  /**
+   * Rows per edge kind and direction, for every kind present, under `q` but not
+   * `kind`. Not grouped: a view showing kind families sums them itself.
+   */
+  totals: ServiceLinksTotal[];
+}
+
 export interface WorkspaceCoChangeEntry {
   source_repo: string;
   source_file: string;
@@ -188,8 +241,13 @@ export interface SystemEdge {
   weight: number;
   /** True for contract/package edges, false for behavioral co-change edges. */
   structural: boolean;
-  /** Back-pointers to the underlying evidence, for drill-down (bounded). */
-  contract_refs: string[];
+  /**
+   * Back-pointers to the underlying evidence, for drill-down (bounded). The
+   * map's lean view (`?view=map`) sends null on structural edges.
+   */
+  contract_refs?: string[] | null;
+  /** Distinct refs the full edge keeps; set by the lean view in place of the list. */
+  ref_count?: number;
   /** Strategy of the link that gave the edge its confidence; null on a co-change edge. */
   strategy?: LinkStrategyWire | null;
 }
@@ -199,7 +257,8 @@ export interface SystemGraph {
   generated_at: string;
   nodes: SystemNode[];
   edges: SystemEdge[];
-  diagnostics: ExtractionDiagnostics;
+  /** Absent from the map's lean view, which reads `/api/workspace/diagnostics`. */
+  diagnostics?: ExtractionDiagnostics;
 }
 
 // ---------------------------------------------------------------------------

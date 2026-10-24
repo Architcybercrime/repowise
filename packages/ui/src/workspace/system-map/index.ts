@@ -76,6 +76,7 @@ export {
 export { useSystemMapLayout, type SystemMapLayout, type UseSystemMapLayoutArgs } from "./use-system-map-layout";
 export { useLevelLayout, type LevelLayout, type UseLevelLayoutArgs } from "./use-level-layout";
 export { LEVEL_NODE_SIZES, CONTAINER_PADDING, type LevelNodeSizes } from "./layout-scopes";
+export type { SystemMapPhase } from "./use-system-map-phases";
 export {
   applyView,
   applyCollapse,

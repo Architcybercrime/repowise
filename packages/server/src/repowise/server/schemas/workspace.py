@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -185,6 +185,70 @@ class WorkspaceCoChangeEntry(BaseModel):
     strength: float
     frequency: int
     last_date: str
+
+
+class WorkspacePackageDepEntry(BaseModel):
+    """One manifest dependency of one repo on another, as ``cross_repo_edges.json`` stores it."""
+
+    source_repo: str
+    source_manifest: str = ""
+    target_repo: str
+    target_package: str = ""
+    #: How the dependency resolved (``npm_package``, ``dotnet_project_ref``...).
+    kind: str = ""
+    target_manifest: str = ""
+    requested_version: str | None = None
+    scope: str = ""
+    resolution_basis: str = ""
+
+
+class WorkspaceServiceLinkEntry(BaseModel):
+    """One piece of evidence behind an edge between two services.
+
+    ``evidence`` says which of ``link``, ``package_dep`` or ``co_change`` is set.
+    """
+
+    #: The system-graph edge kind it folds into (``http``, ``event``, ``db``,
+    #: ``package``, ``co_change``...).
+    kind: str
+    #: ``a_to_b`` when service ``a`` is the consumer or dependent, ``b_to_a``
+    #: when ``b`` is, ``both`` for a co-change (it has no direction).
+    direction: Literal["a_to_b", "b_to_a", "both"]
+    evidence: Literal["contract", "package", "co_change"]
+    #: A contract link or service link (host-only, gateway route).
+    link: WorkspaceContractLinkEntry | None = None
+    #: What established each end's contract (``route_registration``,
+    #: ``client_call``...), one of ``repowise.core.workspace.origins``. None
+    #: when that end has no stored contract row or predates origins.
+    provider_origin: str | None = None
+    consumer_origin: str | None = None
+    package_dep: WorkspacePackageDepEntry | None = None
+    co_change: WorkspaceCoChangeEntry | None = None
+
+
+class WorkspaceServiceLinksTotal(BaseModel):
+    kind: str
+    direction: Literal["a_to_b", "b_to_a", "both"]
+    count: int
+
+
+class WorkspaceLinksBetweenResponse(BaseModel):
+    """Links between two services, read from ``system_graph.json``, ``contracts.json``
+    and ``cross_repo_edges.json``. The three are written together by one
+    workspace update; ``stale_graph`` is true when the graph and the contracts
+    record different repo heads, and rows may then be missing."""
+
+    a: str
+    b: str
+    stale_graph: bool = False
+    #: One page of rows, ordered by direction, kind, evidence, then ids and files.
+    links: list[WorkspaceServiceLinkEntry]
+    #: Rows matching every filter; the page is cut from these.
+    total: int
+    #: Rows per edge kind and direction, for every kind present, under ``q``
+    #: but not ``kind``. Kinds are not grouped here: a view that shows kind
+    #: families (runtime, data, build, history) sums them itself.
+    totals: list[WorkspaceServiceLinksTotal]
 
 
 class WorkspaceCoChangesResponse(BaseModel):
@@ -419,6 +483,25 @@ class WorkspaceSystemGraphResponse(BaseModel):
     nodes: list[WorkspaceSystemNode] = []
     edges: list[WorkspaceSystemEdge] = []
     diagnostics: WorkspaceExtractionDiagnostics = WorkspaceExtractionDiagnostics()
+
+
+class WorkspaceSystemMapEdge(WorkspaceSystemEdge):
+    """An edge of the map's lean view. Mirrors ``core.workspace.system_map_view``."""
+
+    #: A co-change edge's file pairs; None on a structural edge, whose evidence
+    #: the contracts routes serve.
+    contract_refs: list[str] | None = None
+    #: Distinct refs the full edge keeps.
+    ref_count: int = 0
+
+
+class WorkspaceSystemGraphMapResponse(BaseModel):
+    """``GET /api/workspace/system-graph?view=map``: the graph without diagnostics."""
+
+    version: int = 1
+    generated_at: str = ""
+    nodes: list[WorkspaceSystemNode] = []
+    edges: list[WorkspaceSystemMapEdge] = []
 
 
 # ---------------------------------------------------------------------------
@@ -665,3 +748,83 @@ class WorkspaceTestImpactResponse(BaseModel):
     #: Free-form counters and the state that produced an empty answer, so an
     #: empty response always names its reason.
     summary: dict = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Estate report: the ``repowise report estate`` document, as
+# repowise.core.report.estate.build_estate_document returns it.
+# ---------------------------------------------------------------------------
+
+
+class WorkspaceEstateCheckDocs(BaseModel):
+    url: str
+    short: str
+
+
+class WorkspaceEstateCheck(BaseModel):
+    """One evidence item: OpenSSF Scorecard check keys plus ``method`` and ``basis``.
+
+    ``score`` is 0-10, -1 when inconclusive, ``None`` on a descriptive item.
+    ``data`` holds the item's full figures; its keys depend on ``name``.
+    """
+
+    name: str
+    score: float | None = None
+    reason: str
+    details: list[str] = []
+    method: str
+    basis: Literal["measured", "inferred", "declared", "unresolved", "gated"]
+    data: dict[str, Any] | None = None
+    documentation: WorkspaceEstateCheckDocs | None = None
+
+
+class WorkspaceEstateSection(BaseModel):
+    id: str
+    title: str
+    summary: str
+    #: ``None`` for a workspace-scope section, else the member's alias.
+    repo: str | None = None
+    checks: list[WorkspaceEstateCheck] = []
+    #: The section raised; its one check says why and is inconclusive.
+    failed: bool = False
+
+
+class WorkspaceEstateSnapshot(BaseModel):
+    taken_at: str
+    stamp: str | None = None
+
+
+class WorkspaceEstateRepo(BaseModel):
+    alias: str | None = None
+    name: str
+    head_commit: str | None = None
+    last_snapshot: WorkspaceEstateSnapshot | None = None
+    #: ``False`` when the member has no index at all.
+    indexed: bool = True
+    #: Set when an index exists but was not read: ``behind`` (written by an
+    #: older repowise; run ``repowise update``) or ``unreadable``.
+    index_state: Literal["behind", "unreadable"] | None = None
+
+
+class WorkspaceEstateGenerator(BaseModel):
+    name: str
+    version: str
+    stamp: str
+
+
+class WorkspaceEstateScope(BaseModel):
+    kind: Literal["workspace"]
+    name: str
+
+
+class WorkspaceEstateResponse(BaseModel):
+    """``GET /api/workspace/estate``: the estate report document."""
+
+    schema_version: int
+    kind: Literal["estate"]
+    generated_at: str
+    generator: WorkspaceEstateGenerator
+    scope: WorkspaceEstateScope
+    notice: str
+    repos: list[WorkspaceEstateRepo] = []
+    sections: list[WorkspaceEstateSection] = []

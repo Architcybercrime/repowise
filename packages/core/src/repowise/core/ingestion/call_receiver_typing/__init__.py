@@ -21,6 +21,7 @@ from ..languages.receiver_types import (
     RANGE_LANGUAGES,
     RECEIVER_TYPE_LANGUAGES,
     CallAssignment,
+    DartCallback,
     Declaration,
     RangeScan,
     ScopeMarks,
@@ -58,6 +59,7 @@ from ._shared import (  # noqa: F401
     _is_module_level_function,
     _store_capped,
 )
+from .callbacks import CallbackParameterTypes, _TypedCallback
 from .framework import FrameworkReceiverTypes
 from .go import GoReturnTypes
 from .java import _JAVA_TYPE_PARAMETERS, JavaTypeVisibility, _header_type_parameters  # noqa: F401
@@ -188,6 +190,7 @@ class ReceiverTypingMixin(
     PythonReturnTypes,
     GoReturnTypes,
     RangeVariableTypes,
+    CallbackParameterTypes,
     FrameworkReceiverTypes,
 ):
     """Typed-receiver and C# extension strategies, with the source caches they read."""
@@ -205,6 +208,9 @@ class ReceiverTypingMixin(
         self._body_types: dict[tuple[str, str], dict[str, str | None]] = {}
         self._field_types: dict[str, dict[str, dict[str, str | None]]] = {}
         self._range_scans: dict[str, RangeScan] = {}
+        # Dart callbacks per file, and per body once typed from their receivers.
+        self._callback_scans: dict[str, tuple[DartCallback, ...]] = {}
+        self._callback_types: dict[tuple[str, str], tuple[_TypedCallback, ...]] = {}
         # {file: {class_id: {field: container spelling}}}
         self._container_fields: dict[str, dict[str, dict[str, str | None]]] = {}
         self._module_types: dict[str, dict[str, str | None]] = {}
@@ -455,7 +461,7 @@ class ReceiverTypingMixin(
                 return None
             return self._resolve_chained_receiver(file_path, call, caller_id, language)
         type_name, scope, typing_file = self._receiver_type_and_scope(
-            file_path, caller_id, language, receiver_name
+            file_path, caller_id, language, receiver_name, call.line
         )
         if type_name is None:
             return None
@@ -489,8 +495,14 @@ class ReceiverTypingMixin(
         caller_id: str,
         language: str,
         receiver_name: str,
+        line: int | None = None,
     ) -> tuple[str | None, str, str]:
         """The receiver's declared type, the scope that declared it, and the file to read it in.
+
+        A Dart closure parameter answers first, from the ``Iterable`` call that
+        hands it the literal, but only on a *line* inside that literal: it is
+        no local of the body at large. One whose type is unread still hides
+        the locals and fields it shadows.
 
         A local shadows a field, so the body answers first and its answer
         stands — including when that answer is "declared twice, no usable
@@ -502,6 +514,12 @@ class ReceiverTypingMixin(
         neither types nor binds is asked of the function around it, whose
         locals it captures and whose class fields it sees.
         """
+        if line is not None and language == "dart":
+            bound, closure_type = self._callback_parameter(
+                file_path, caller_id, language, receiver_name, line
+            )
+            if bound:
+                return closure_type, "body", file_path
         caller_id, body_types = self._typing_scope(file_path, caller_id, language, receiver_name)
         # A builtin type answers only when nothing else does, so a local
         # ``String data`` leaves ``this.data.m()``, which reaches here as
@@ -743,7 +761,7 @@ class ReceiverTypingMixin(
         head, *fields = (call.receiver_name or "").split(".")
         if len(fields) > _MAX_CHAIN_FIELDS or not all(fields):
             return None
-        found = self._chain_head(file_path, caller_id, language, head)
+        found = self._chain_head(file_path, caller_id, language, head, call.line)
         for field in fields:
             if found is None:
                 return None
@@ -760,9 +778,9 @@ class ReceiverTypingMixin(
         return ResolvedCall(caller_id, sym_id, 0.88, call.line, "receiver_chain_import")
 
     def _chain_head(
-        self, file_path: str, caller_id: str, language: str, head: str
+        self, file_path: str, caller_id: str, language: str, head: str, line: int
     ) -> tuple[str, str, str] | None:
-        """``(file, class id, tier)`` for a chain's head name."""
+        """``(file, class id, tier)`` for a chain's head name, as bound on *line*."""
         if head == _CHAIN_SELF[language]:
             class_id = self._caller_class_id(caller_id)
             symbol = self._symbols_by_id.get(class_id)
@@ -770,7 +788,7 @@ class ReceiverTypingMixin(
                 return None
             return file_path, class_id, "same_file"
         type_name, _, typing_file = self._receiver_type_and_scope(
-            file_path, caller_id, language, head
+            file_path, caller_id, language, head, line
         )
         if type_name is not None and language == "python" and "::" in type_name:
             return self._located(file_path, type_name)  # typed from a call
@@ -1129,7 +1147,7 @@ class ReceiverTypingMixin(
         if language not in EXTERNAL_TYPE_LANGUAGES:
             return False
         type_name, _, typing_file = self._receiver_type_and_scope(
-            file_path, caller_id, language, receiver_name
+            file_path, caller_id, language, receiver_name, call.line
         )
         if type_name is None or "::" in type_name:
             return False
