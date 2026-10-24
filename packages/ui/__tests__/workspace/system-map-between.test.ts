@@ -43,7 +43,7 @@ describe("servicesBetween on eShop", () => {
     expect(path!.hops.map((h) => Object.keys(h.summary.kinds))).toEqual([["http"], ["event"]]);
   });
 
-  it("walks Runtime only by default: a package edge is not a route", () => {
+  it("walks the map's default families: a package edge is a route only when Build is on", () => {
     expect(servicesBetween(ESHOP_GRAPH, "identity.api", "eshop.servicedefaults")!.pathsAToB).toEqual([]);
     const build = servicesBetween(ESHOP_GRAPH, "identity.api", "eshop.servicedefaults", {
       families: new Set<EdgeFamily>(["build"]),
@@ -54,6 +54,20 @@ describe("servicesBetween on eShop", () => {
   it("returns null for an unknown service or the same service twice", () => {
     expect(servicesBetween(ESHOP_GRAPH, "webapp", "nope")).toBeNull();
     expect(servicesBetween(ESHOP_GRAPH, "webapp", "webapp")).toBeNull();
+  });
+});
+
+describe("server-sent families", () => {
+  it("follows an edge's family from the payload over the kind registry", () => {
+    const g = graphOf([{ ...edge("a", "b", "http"), family: "build" }, { ...edge("b", "c", "package"), family: "runtime" }]);
+    const r = servicesBetween(g, "a", "c")!;
+    expect(r.pathsAToB).toEqual([]);
+    expect(servicesBetween(g, "b", "c")!.aToB?.kinds).toEqual({ package: 1 });
+  });
+
+  it("falls back to the registry for a family it does not know", () => {
+    const g = graphOf([{ ...edge("a", "b", "http"), family: "telepathy" }]);
+    expect(servicesBetween(g, "a", "b")!.aToB?.links).toBe(1);
   });
 });
 

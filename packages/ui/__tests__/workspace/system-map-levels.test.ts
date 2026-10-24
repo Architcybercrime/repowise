@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { buildLevelView, normalizeGraph } from "../../src/workspace/system-map/levels";
 import {
   ESTATE_MORE_ID,
-  GROUPING_MIN_SERVICES,
   TRAY_NODE_ID,
   activeGroups,
   groupNodeId,
@@ -34,7 +33,8 @@ function groupedEstate(groups: number, size: number, extra: readonly LevelsEdge[
     }
     if (g + 1 < groups) edges.push(edge(`g${g}.s0`, `g${g + 1}.s0`, "event", 3));
   }
-  return { nodes, edges: [...edges, ...extra], groups: [{ id: "g0", label: "Storefront", source: "tag" }] };
+  const meta = Array.from({ length: groups }, (_, g) => (g === 0 ? { id: "g0", label: "Storefront", source: "tag" } : { id: `g${g}` }));
+  return { nodes, edges: [...edges, ...extra], groups: meta };
 }
 
 /** `n` ungrouped services in a ring of HTTP calls. */
@@ -108,17 +108,20 @@ describe("estate level on eShop (flat, under the grouping threshold)", () => {
   });
 });
 
-describe("grouping threshold", () => {
-  it("stays flat at or under the service threshold", () => {
-    const g = groupedEstate(4, GROUPING_MIN_SERVICES / 4);
-    expect(g.nodes).toHaveLength(GROUPING_MIN_SERVICES);
-    expect(activeGroups(g)).toBeNull();
-    expect(buildLevelView(g).grouped).toBe(false);
+describe("grouping follows the payload", () => {
+  it("stays flat when the payload carries no groups, whatever the nodes say", () => {
+    const g = groupedEstate(4, 20);
+    expect(activeGroups({ ...g, groups: undefined })).toBeNull();
+    expect(activeGroups({ ...g, groups: [] })).toBeNull();
+    expect(buildLevelView({ ...g, groups: null }).grouped).toBe(false);
   });
 
-  it("stays flat with fewer than two multi-member groups", () => {
-    const g = groupedEstate(1, 50);
-    expect(activeGroups(g)).toBeNull();
+  it("trusts the server's groups on a small estate", () => {
+    const g = groupedEstate(2, 3);
+    expect(g.nodes).toHaveLength(6);
+    const view = buildLevelView(g);
+    expect(view.grouped).toBe(true);
+    expect(view.nodes.map((n) => n.type)).toEqual(["group", "group"]);
   });
 
   it("draws a one-member group's service bare", () => {
@@ -287,6 +290,13 @@ describe("level precedence and determinism", () => {
     const g2: LevelsGraph = { nodes: [b, ...ESHOP_GRAPH.nodes, a], edges: [heavy, ...ESHOP_GRAPH.edges] };
     expect(normalizeGraph(g1)).toEqual(normalizeGraph(g2));
     expect(normalizeGraph(g1).nodes.filter((n) => n.id === "x")).toEqual([a]);
+  });
+
+  it("normalizes a payload once and reuses it", () => {
+    const g: LevelsGraph = { nodes: [...ESHOP_GRAPH.nodes], edges: [...ESHOP_GRAPH.edges] };
+    const first = normalizeGraph(g);
+    expect(normalizeGraph(g)).toBe(first);
+    expect(normalizeGraph(first)).toBe(first);
   });
 
   it("gives every drawn node and edge a unique id at every level", () => {

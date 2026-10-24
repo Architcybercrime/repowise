@@ -2,15 +2,16 @@
  * Estate and group-open levels (L0, L1): a card per group, a card per
  * ungrouped service, one tray for services with no Runtime or Data link, and
  * one band per ordered pair where an end aggregates. An opened group becomes
- * the container of its service cards. Groups apply only above 40 services
- * with two or more multi-member groups; otherwise the estate is flat. Which
+ * the container of its service cards. The server decides whether an estate
+ * is grouped (it writes `groups` only when grouping reduces something); a
+ * payload without `groups` is drawn flat. Which
  * services are ranked and which go to the tray never depends on the family
  * filter, so a filter toggle changes only the connectors. Pure, no React.
  */
 
 import { compareIds, connectEdges } from "./bands";
 import { allocateSlots, capEdges, truncationReport, type BudgetContainer } from "./draw-budget";
-import { LINKED_FAMILIES, edgeFamily, linkWeight } from "./edge-families";
+import { LINKED_FAMILIES, edgeFamilyOf, linkWeight } from "./edge-families";
 import type {
   DrawBudget,
   DrawnEdge,
@@ -23,8 +24,6 @@ import type {
   TruncationReport,
 } from "./level-types";
 
-/** Groups apply only above this many services. */
-export const GROUPING_MIN_SERVICES = 40;
 /** An opened group over `over` services draws its `keep` most-linked plus "+N more". */
 export const OPEN_GROUP_LIMIT = { over: 40, keep: 30 } as const;
 
@@ -48,29 +47,27 @@ function push(map: Map<string, string[]>, key: string, value: string): void {
 }
 
 /**
- * Service id -> group id, for groups with two or more members, or null when
- * the estate is drawn flat (40 services or fewer, or fewer than two
- * multi-member groups). A one-member group's service is drawn bare.
+ * Service id -> group id, or null when the payload carries no `groups` (the
+ * server groups only estates where it reduces something, so absence means
+ * flat). A group with one service in this payload is drawn as that bare
+ * service rather than a card around one thing.
  */
 export function activeGroups(graph: LevelsGraph): Map<string, string> | null {
-  if (graph.nodes.length <= GROUPING_MIN_SERVICES) return null;
+  if (!graph.groups || graph.groups.length === 0) return null;
   const members = new Map<string, string[]>();
   for (const n of graph.nodes) if (n.group) push(members, n.group, n.id);
   const out = new Map<string, string>();
-  let multi = 0;
   for (const [group, ids] of members) {
-    if (ids.length < 2) continue;
-    multi += 1;
-    for (const id of ids) out.set(id, group);
+    if (ids.length >= 2) for (const id of ids) out.set(id, group);
   }
-  return multi >= 2 ? out : null;
+  return out.size > 0 ? out : null;
 }
 
 /** Links per service over the fixed linked families (Runtime and Data), both directions. */
 export function linkedWeights(edges: Iterable<LevelsEdge>): Map<string, number> {
   const out = new Map<string, number>();
   for (const e of edges) {
-    if (e.source === e.target || !LINKED_FAMILIES.has(edgeFamily(e.kind))) continue;
+    if (e.source === e.target || !LINKED_FAMILIES.has(edgeFamilyOf(e))) continue;
     const w = linkWeight(e);
     out.set(e.source, (out.get(e.source) ?? 0) + w);
     out.set(e.target, (out.get(e.target) ?? 0) + w);

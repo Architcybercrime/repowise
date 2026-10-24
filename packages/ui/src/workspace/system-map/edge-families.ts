@@ -28,6 +28,17 @@ export function edgeFamily(kind: string): EdgeFamily {
   return edgeKindStyle(kind).family;
 }
 
+const FAMILIES: ReadonlySet<string> = new Set(EDGE_FAMILY_ORDER);
+
+/**
+ * An edge's family: the `family` the server sent when it is one we know,
+ * else the kind registry's (payloads written before the field existed).
+ */
+export function edgeFamilyOf(edge: { kind: string; family?: string | null }): EdgeFamily {
+  const sent = edge.family;
+  return sent && FAMILIES.has(sent) ? (sent as EdgeFamily) : edgeFamily(edge.kind);
+}
+
 export interface FamilyCount {
   /** System edges of the family. */
   edges: number;
@@ -37,11 +48,11 @@ export interface FamilyCount {
 
 /** Edge and link counts per family, for the chips and the "hidden" caption. Only families present appear. */
 export function familyCounts(
-  edges: Iterable<{ kind: string; weight: number }>,
+  edges: Iterable<{ kind: string; family?: string | null; weight: number }>,
 ): Partial<Record<EdgeFamily, FamilyCount>> {
   const out: Partial<Record<EdgeFamily, FamilyCount>> = {};
   for (const e of edges) {
-    const family = edgeFamily(e.kind);
+    const family = edgeFamilyOf(e);
     const row = (out[family] ??= { edges: 0, links: 0 });
     row.edges += 1;
     row.links += linkWeight(e);

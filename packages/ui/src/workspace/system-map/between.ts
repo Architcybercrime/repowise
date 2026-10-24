@@ -2,12 +2,14 @@
  * Between two services: the links that join them directly, in both
  * directions, and when there is no direct link the shortest paths through one
  * other service ("webhookclient reaches catalog.api through webhooks.api").
- * Paths walk Runtime edges by default: a package or co-change edge is not a
- * route a request takes. Pure, no React; the graph is already loaded.
+ * Paths and direct links follow the map's active families (Runtime and Data
+ * by default), so what this counts matches what the map draws; a package or
+ * co-change edge is a route only when the reader turned its family on. The
+ * server's routes-between totals count every kind; this view filters them. Pure, no React; the graph is already loaded.
  */
 
 import { addLink, compareIds, emptySummary } from "./bands";
-import { edgeFamily, type EdgeFamily } from "./edge-families";
+import { DEFAULT_EDGE_FAMILIES, edgeFamilyOf, type EdgeFamily } from "./edge-families";
 import type { LevelsEdge, LevelsGraph, LinkSummary } from "./level-types";
 
 export interface PathHop {
@@ -34,7 +36,7 @@ export interface BetweenResult {
 }
 
 export interface BetweenOptions {
-  /** Families walked for paths and counted as direct links. Default Runtime only; the map passes its filter. */
+  /** Families walked for paths and counted as direct links: the map's active families, Runtime and Data by default. */
   families?: ReadonlySet<EdgeFamily>;
   /** 1 = direct only, 2 = also through one other service. Default 2. */
   maxHops?: 1 | 2;
@@ -42,15 +44,13 @@ export interface BetweenOptions {
   maxPaths?: number;
 }
 
-const RUNTIME_ONLY: ReadonlySet<EdgeFamily> = new Set<EdgeFamily>(["runtime"]);
-
 type Adjacency = Map<string, Map<string, LinkSummary>>;
 
 /** source -> target -> summary of every edge in the families, self-edges dropped. */
 export function buildAdjacency(edges: Iterable<LevelsEdge>, families: ReadonlySet<EdgeFamily>): Adjacency {
   const adj: Adjacency = new Map();
   for (const e of edges) {
-    if (e.source === e.target || !families.has(edgeFamily(e.kind))) continue;
+    if (e.source === e.target || !families.has(edgeFamilyOf(e))) continue;
     let out = adj.get(e.source);
     if (!out) adj.set(e.source, (out = new Map()));
     let s = out.get(e.target);
@@ -102,7 +102,7 @@ export function servicesBetween(
   if (a === b) return null;
   const ids = new Set(graph.nodes.map((n) => n.id));
   if (!ids.has(a) || !ids.has(b)) return null;
-  const adj = buildAdjacency(graph.edges, options.families ?? RUNTIME_ONLY);
+  const adj = buildAdjacency(graph.edges, options.families ?? DEFAULT_EDGE_FAMILIES);
   const maxHops = options.maxHops ?? 2;
   const maxPaths = options.maxPaths ?? 3;
   return {
