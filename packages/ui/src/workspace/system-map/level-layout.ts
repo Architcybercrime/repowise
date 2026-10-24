@@ -17,6 +17,7 @@ import {
   fitContainer,
   orderByPrevious,
   planLevelLayout,
+  planSignature,
   scopeSignature,
   type FittedContainer,
   type LayoutScope,
@@ -72,6 +73,13 @@ export function levelLayoutInput(
 ): LevelLayoutInput {
   if (view.level === "focus" && view.focus) return { kind: "columns", view };
   return { kind: "scopes", plan: planLevelLayout(view.nodes, edges, sizes) };
+}
+
+/** One key per layout: equal keys lay out to equal positions, so a hook can skip ELK on a match. */
+export function levelLayoutKey(input: LevelLayoutInput, sizes: LevelNodeSizes = LEVEL_NODE_SIZES): string {
+  if (input.kind === "scopes") return planSignature(input.plan);
+  const { width, height } = sizes.service;
+  return [`columns:${width}x${height}`, ...input.view.nodes.map((n) => n.id)].join("|");
 }
 
 export interface LevelLayoutOptions {

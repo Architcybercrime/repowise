@@ -70,28 +70,55 @@ function shapesLayout(e: LevelsEdge): boolean {
   return e.source !== e.target && edgeFamily(e.kind) !== "history";
 }
 
-/**
- * Scopes for an estate, group or between view (focus uses fixed columns).
- * `edges` are the graph's system edges; each is drawn at the card of each
- * end, or at the closed group, tray or "+N more" that holds it.
- */
-export function planLevelLayout(
-  nodes: readonly DrawnNode[],
-  edges: readonly LevelsEdge[],
-  sizes: LevelNodeSizes = LEVEL_NODE_SIZES,
-): LevelLayoutPlan {
+interface Placement {
+  /** Drawn id -> the open container it sits in. */
+  parentOf: Map<string, string>;
+  /** Service id -> the drawn id it is shown at. */
+  drawnAt: Map<string, string>;
+}
+
+/** Where each service is drawn: its own card, else the closed group, tray or "+N more" holding it. */
+function placement(nodes: readonly DrawnNode[]): Placement {
   const parentOf = new Map<string, string>();
   const drawnAt = new Map<string, string>();
   for (const n of nodes) {
     if ((n.type === "service" || n.type === "more") && n.parentId) parentOf.set(n.id, n.parentId);
     if (n.type === "service") drawnAt.set(n.serviceId, n.id);
   }
-  // A service with no card of its own is drawn at the aggregate holding it.
   for (const n of nodes) {
     if (n.type === "service" || isOpenContainer(n)) continue;
     for (const id of n.serviceIds) if (!drawnAt.has(id)) drawnAt.set(id, n.id);
   }
+  return { parentOf, drawnAt };
+}
 
+/**
+ * The scope and drawn ends an edge shapes: inside one container when both
+ * ends sit in it, else the root between their top-level boxes. Null when
+ * the edge joins a box to itself or an end is not drawn.
+ */
+function liftEdge(e: LevelsEdge, { parentOf, drawnAt }: Placement): [string, string, string] | null {
+  const s = drawnAt.get(e.source);
+  const t = drawnAt.get(e.target);
+  if (s === undefined || t === undefined || s === t) return null;
+  const ps = parentOf.get(s);
+  const pt = parentOf.get(t);
+  if (ps === pt) return [ps ?? ROOT_SCOPE, s, t];
+  const [rs, rt] = [ps ?? s, pt ?? t];
+  return rs === rt ? null : [ROOT_SCOPE, rs, rt];
+}
+
+/**
+ * Scopes for an estate, group or between view (focus uses fixed columns).
+ * `edges` are the graph's system edges, each lifted to the drawn ids that
+ * show its ends.
+ */
+export function planLevelLayout(
+  nodes: readonly DrawnNode[],
+  edges: readonly LevelsEdge[],
+  sizes: LevelNodeSizes = LEVEL_NODE_SIZES,
+): LevelLayoutPlan {
+  const placed = placement(nodes);
   const scopes = new Map<string, { nodes: C4LayoutNode[]; edges: Map<string, C4LayoutEdge> }>();
   const scope = (id: string) => {
     let s = scopes.get(id);
@@ -99,21 +126,15 @@ export function planLevelLayout(
     return s;
   };
   scope(ROOT_SCOPE);
-  for (const n of nodes) scope(parentOf.get(n.id) ?? ROOT_SCOPE).nodes.push({ id: n.id, ...nodeSize(n, sizes) });
-
-  const connect = (scopeId: string, source: string, target: string) => {
+  for (const n of nodes) {
+    scope(placed.parentOf.get(n.id) ?? ROOT_SCOPE).nodes.push({ id: n.id, ...nodeSize(n, sizes) });
+  }
+  for (const e of edges) {
+    const lifted = shapesLayout(e) ? liftEdge(e, placed) : null;
+    if (!lifted) continue;
+    const [scopeId, source, target] = lifted;
     const id = `${source}>${target}`;
     scope(scopeId).edges.set(id, { id, source, target });
-  };
-  for (const e of edges) {
-    if (!shapesLayout(e)) continue;
-    const s = drawnAt.get(e.source);
-    const t = drawnAt.get(e.target);
-    if (s === undefined || t === undefined || s === t) continue;
-    const ps = parentOf.get(s);
-    const pt = parentOf.get(t);
-    if (ps === pt) connect(ps ?? ROOT_SCOPE, s, t);
-    else if ((ps ?? s) !== (pt ?? t)) connect(ROOT_SCOPE, ps ?? s, pt ?? t);
   }
 
   const toScope = (id: string): LayoutScope => {

@@ -68,19 +68,24 @@ function startWorker(): WorkerEngine | null {
  * else on the main thread. A layout error from ELK itself is rethrown either way.
  */
 export async function runElkLayout(graph: ElkNode, options: { worker?: boolean } = {}): Promise<ElkNode> {
-  if (options.worker) {
-    const engine = startWorker();
-    if (engine) {
-      try {
-        return await Promise.race([engine.elk.layout(graph), engine.failed]);
-      } catch (err) {
-        if (!(err instanceof WorkerUnavailable)) throw err;
-        engine.terminate();
-        workerEngine = null;
-      }
-    }
+  const engine = options.worker ? startWorker() : null;
+  if (engine) {
+    const laid = await layoutInWorker(engine, graph);
+    if (laid) return laid;
   }
   return (await mainThreadElk()).layout(graph);
+}
+
+/** The worker's layout, or null when the worker failed and has been dropped. */
+async function layoutInWorker(engine: WorkerEngine, graph: ElkNode): Promise<ElkNode | null> {
+  try {
+    return await Promise.race([engine.elk.layout(graph), engine.failed]);
+  } catch (err) {
+    if (!(err instanceof WorkerUnavailable)) throw err;
+    engine.terminate();
+    if (workerEngine === engine) workerEngine = null;
+    return null;
+  }
 }
 
 /** Test seam: forget the worker so the next layout tries to start one again. */

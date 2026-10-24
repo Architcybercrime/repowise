@@ -11,8 +11,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { C4LayoutPosition } from "../../c4/layout/elk-c4-layout";
-import { createLayoutCache, computeLevelLayout, levelLayoutInput, type LevelPositions } from "./level-layout";
-import { LEVEL_NODE_SIZES, planSignature, type LevelNodeSizes } from "./layout-scopes";
+import {
+  computeLevelLayout,
+  createLayoutCache,
+  levelLayoutInput,
+  levelLayoutKey,
+  type LevelPositions,
+} from "./level-layout";
+import { LEVEL_NODE_SIZES, type LevelNodeSizes } from "./layout-scopes";
 import type { LevelView } from "./levels";
 import type { LevelsGraph } from "./level-types";
 
@@ -36,14 +42,7 @@ export function useLevelLayout({ graph, view, sizes = LEVEL_NODE_SIZES }: UseLev
     () => (graph && view ? levelLayoutInput(view, graph.edges, sizes) : null),
     [graph, view, sizes],
   );
-  const key = useMemo(() => {
-    if (!input) return null;
-    if (input.kind === "columns") {
-      const { width, height } = sizes.service;
-      return `columns:${width}x${height}\n${input.view.nodes.map((n) => n.id).join("|")}`;
-    }
-    return planSignature(input.plan);
-  }, [input, sizes]);
+  const key = useMemo(() => (input ? levelLayoutKey(input, sizes) : null), [input, sizes]);
 
   const cache = useRef(createLayoutCache());
   const previous = useRef<LevelPositions | undefined>(undefined);
@@ -53,8 +52,9 @@ export function useLevelLayout({ graph, view, sizes = LEVEL_NODE_SIZES }: UseLev
     cache.current = createLayoutCache();
     previous.current = undefined;
   }
-  const latestInput = useRef(input);
-  latestInput.current = input;
+  // Read by the effect, which runs on `key` alone: equal keys lay out alike.
+  const latest = useRef({ input, sizes });
+  latest.current = { input, sizes };
 
   // The key the shown positions belong to; loading is derived, so it is true
   // on the very render the key changes rather than one commit later.
@@ -63,13 +63,13 @@ export function useLevelLayout({ graph, view, sizes = LEVEL_NODE_SIZES }: UseLev
   );
 
   useEffect(() => {
-    const current = latestInput.current;
+    const { input: current, sizes: currentSizes } = latest.current;
     if (!current || key === null) {
       setSettled({ key, positions: null, failed: false });
       return;
     }
     let cancelled = false;
-    computeLevelLayout(current, { cache: cache.current, previous: previous.current, sizes }).then(
+    computeLevelLayout(current, { cache: cache.current, previous: previous.current, sizes: currentSizes }).then(
       (result) => {
         if (cancelled) return;
         previous.current = result;
@@ -82,8 +82,6 @@ export function useLevelLayout({ graph, view, sizes = LEVEL_NODE_SIZES }: UseLev
     return () => {
       cancelled = true;
     };
-    // `key` stands for `input` and `sizes`: equal keys lay out alike.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   return { positions: settled.positions, loading: settled.key !== key, failed: settled.failed };
