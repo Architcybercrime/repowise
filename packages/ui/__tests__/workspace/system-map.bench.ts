@@ -19,6 +19,9 @@ import {
   scopeSignature,
 } from "../../src/workspace/system-map/layout-scopes";
 import { neighbourGroups, serviceResolver } from "../../src/workspace/system-map/system-map-model";
+import { allocateSlots } from "../../src/workspace/system-map/draw-budget";
+import { servicesBetween } from "../../src/workspace/system-map/between";
+import type { LevelsGraph } from "../../src/workspace/system-map/level-types";
 import { makeSyntheticSystemGraph } from "./fixtures/synthetic-system-graph";
 
 const SIZES = [30, 100, 300, 1000] as const;
@@ -36,9 +39,15 @@ for (const services of SIZES) {
     seed: services,
   });
   const hub = graph.edges.find((e) => e.kind === "package")?.target ?? graph.nodes[0]!.id;
+  // The grouped payload the levels model reads: `group` on nodes plus the `groups` list.
+  const groupIds = [...new Set(graph.nodes.map((n) => n.group).filter((g): g is string => Boolean(g)))];
+  const levels: LevelsGraph = { ...graph, groups: groupIds.map((id) => ({ id })) };
+  const caller = graph.edges.find((e) => e.kind === "http")?.source ?? graph.nodes[0]!.id;
+  const callee = graph.edges.find((e) => e.kind === "http")?.target ?? graph.nodes[1]!.id;
+  const containers = groupIds.map((_, i) => ({ size: 5 + ((i * 7) % 40) }));
   // The drawn view the layout plans from: the estate with its first group open when grouped.
   const firstGroup = graph.nodes.find((n) => n.group)?.group;
-  const view = buildLevelView(graph, firstGroup ? { open: [firstGroup] } : {});
+  const view = buildLevelView(levels, firstGroup ? { open: [firstGroup] } : {});
   const plan = planLevelLayout(view.nodes, graph.edges);
   // Previous positions in a shuffled-ish reading order, as after a relayout.
   const previous = new Map(
@@ -75,5 +84,23 @@ for (const services of SIZES) {
         await computeSystemMapPositions(graph);
       }, SLOW);
     }
+    bench("buildLevelView estate (cold payload, normalizes)", () => {
+      buildLevelView({ ...levels });
+    });
+    bench("buildLevelView open group (cached payload)", () => {
+      buildLevelView(levels, { open: groupIds.slice(0, 1) });
+    });
+    bench("buildLevelView focus, two hops (cached payload)", () => {
+      buildLevelView(levels, { focus: hub, hops: 2 });
+    });
+    bench("allocateSlots (one container per group)", () => {
+      allocateSlots(containers, 119);
+    });
+    bench("servicesBetween (runtime pair)", () => {
+      servicesBetween(levels, caller, callee);
+    });
+    bench("computeSystemMapPositions (ELK, grid past 500)", async () => {
+      await computeSystemMapPositions(graph);
+    }, SLOW);
   });
 }

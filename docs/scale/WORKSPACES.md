@@ -317,10 +317,13 @@ The contracts, package dependencies, and co-changes above are each a flat list. 
 - a `kind`, `http`, `grpc`, `event`, `package`, `co_change`, or `db`;
 - a `match_type`, `exact`, `candidate`, `manual`, or `inferred`;
 - a `strategy`, the [matching rule](../reference/WORKSPACE_CONTRACTS.md#how-a-contract-and-a-link-were-made) of the link that gave the edge its confidence (`manifest` for a package dependency, none for co-change);
+- a `family`, `runtime` (http, grpc, socket, event), `data` (db), `build` (package) or `history` (co-change); a kind outside that table is `history`, so it is never walked as a dependency;
 - a `confidence` and a `weight` (how many underlying contracts / deps / co-changes it aggregates);
 - `contract_refs` back-pointers so any view can drill from an edge to its evidence.
 
 Edge direction is uniform: **`source` depends on / calls `target`.** A consumer points to the provider it calls; a dependent repo points to the repo it imports. Structural edges (contracts, package deps) are flagged distinctly from behavioral co-change edges, repowise never conflates "these change together" with "these call each other".
+
+**Large estates are grouped into systems.** Past 40 services, each service joins at most one group, recorded as `group` on the node and summarised in a top-level `groups` list (`id`, `label`, `source`, `member_count`). Groups come from, in order: an explicit `group:<name>` repo tag (`tags: [group:checkout]`; other tags such as `backend` serve conformance rules and never form a group), a shared alias prefix across 2+ repos and under half the estate (`ordering.api`, `ordering.worker`), then seeded community detection over runtime and data edges (a linked group's id names its smallest member, its label the member most services call). A group needs 2+ services, and groups are written only when at least two form; smaller estates carry no `group` or `groups` keys.
 
 Fetch it over REST with `GET /api/workspace/system-graph`, or explore it visually in the [Live System Map](#live-system-map).
 

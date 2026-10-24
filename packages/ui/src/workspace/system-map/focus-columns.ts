@@ -9,7 +9,7 @@
 import type { C4LayoutPosition } from "../../c4/layout/elk-c4-layout";
 import { addLink, bandId, compareIds, emptySummary } from "./bands";
 import { allocateSlots } from "./draw-budget";
-import { edgeFamily, type EdgeFamily } from "./edge-families";
+import { edgeFamilyOf, type EdgeFamily } from "./edge-families";
 import type { DrawBudget, FocusColumnId, LevelsEdge, LevelsGraph, LinkSummary } from "./level-types";
 
 export interface FocusEntry {
@@ -78,7 +78,7 @@ export function focusColumns(
   if (!graph.nodes.some((n) => n.id === focus)) return null;
   const hops = options.hops ?? 1;
   const edges = graph.edges.filter(
-    (e) => e.source !== e.target && options.families.has(edgeFamily(e.kind)),
+    (e) => e.source !== e.target && options.families.has(edgeFamilyOf(e)),
   );
 
   const callers: Neighbours = new Map();

@@ -17,7 +17,7 @@ import { servicesBetween, type BetweenResult } from "./between";
 import { DRAW_BUDGET, capEdges, truncationReport } from "./draw-budget";
 import {
   DEFAULT_EDGE_FAMILIES,
-  edgeFamily,
+  edgeFamilyOf,
   familyCounts,
   type EdgeFamily,
   type FamilyCount,
@@ -58,21 +58,32 @@ export interface LevelView {
  * sharing an id, the one whose serialization sorts first wins.
  */
 export function normalizeGraph(graph: LevelsGraph): LevelsGraph {
+  const cached = normalized.get(graph);
+  if (cached) return cached;
   const nodes = dedupeById(graph.nodes);
   const known = new Set(nodes.map((n) => n.id));
   const edges = dedupeById(graph.edges.filter((e) => known.has(e.source) && known.has(e.target)));
-  return { ...graph, nodes, edges };
+  const out = { ...graph, nodes, edges };
+  normalized.set(graph, out);
+  normalized.set(out, out);
+  return out;
 }
 
-/** One record per id, in id order; a duplicate id keeps the copy that serializes first, whatever its position. */
+/** One normalized graph per payload object, so a filter toggle or a focus change never re-sorts the payload. */
+const normalized = new WeakMap<LevelsGraph, LevelsGraph>();
+
+/**
+ * One record per id, in id order. A duplicate id keeps the copy that
+ * serializes first, whatever its position; only colliding records are
+ * serialized, so a clean payload costs one pass and a sort.
+ */
 function dedupeById<T extends { id: string }>(records: readonly T[]): T[] {
-  const kept = new Map<string, { record: T; key: string }>();
+  const kept = new Map<string, T>();
   for (const record of records) {
-    const key = stableKey(record);
     const prior = kept.get(record.id);
-    if (!prior || key < prior.key) kept.set(record.id, { record, key });
+    if (!prior || stableKey(record) < stableKey(prior)) kept.set(record.id, record);
   }
-  return [...kept.values()].map((k) => k.record).sort((x, y) => compareIds(x.id, y.id));
+  return [...kept.values()].sort((x, y) => compareIds(x.id, y.id));
 }
 
 /** JSON with keys in sorted order, so two equal records always serialize alike. */
@@ -89,7 +100,7 @@ export function buildLevelView(
   graph = normalizeGraph(graph);
   const families = state.families ?? DEFAULT_EDGE_FAMILIES;
   const base = { families, familyCounts: familyCounts(graph.edges), focus: null, between: null };
-  const visible = graph.edges.filter((e) => families.has(edgeFamily(e.kind)));
+  const visible = graph.edges.filter((e) => families.has(edgeFamilyOf(e)));
   const edgesById = new Map(graph.edges.map((e) => [e.id, e]));
 
   if (state.between) {

@@ -4941,6 +4941,13 @@ export interface WorkspaceSchemaCoverage {
   recovered_ratio_eligible?: number | null;
 }
 
+export interface WorkspaceServiceGroup {
+  id: string;
+  label: string;
+  source: string;
+  member_count?: number;
+}
+
 /**
  * One piece of evidence behind an edge between two services.
  *
@@ -4997,6 +5004,7 @@ export interface WorkspaceSystemEdge {
   structural?: boolean;
   contract_refs?: string[];
   strategy?: string | null;
+  family?: string | null;
 }
 
 /** ``GET /api/workspace/system-graph?view=map``: the graph without diagnostics. */
@@ -5005,6 +5013,7 @@ export interface WorkspaceSystemGraphMapResponse {
   generated_at?: string;
   nodes?: WorkspaceSystemNode[];
   edges?: WorkspaceSystemMapEdge[];
+  groups?: WorkspaceServiceGroup[];
 }
 
 export interface WorkspaceSystemGraphResponse {
@@ -5013,6 +5022,7 @@ export interface WorkspaceSystemGraphResponse {
   nodes?: WorkspaceSystemNode[];
   edges?: WorkspaceSystemEdge[];
   diagnostics?: WorkspaceExtractionDiagnostics;
+  groups?: WorkspaceServiceGroup[];
 }
 
 /** An edge of the map's lean view. Mirrors ``core.workspace.system_map_view``. */
@@ -5027,6 +5037,7 @@ export interface WorkspaceSystemMapEdge {
   structural?: boolean;
   contract_refs?: string[] | null;
   strategy?: string | null;
+  family?: string | null;
   ref_count?: number;
 }
 
@@ -5042,6 +5053,7 @@ export interface WorkspaceSystemNode {
   is_orphan_provider?: boolean;
   is_orphan_consumer?: boolean;
   is_isolated?: boolean;
+  group?: string | null;
 }
 
 /** One consumer file the join looked at, and the state it ended in. */

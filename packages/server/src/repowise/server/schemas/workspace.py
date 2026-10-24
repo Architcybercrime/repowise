@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class WorkspaceRepoRemovedResponse(BaseModel):
@@ -325,6 +325,15 @@ class WorkspaceSystemNode(BaseModel):
     is_orphan_provider: bool = False
     is_orphan_consumer: bool = False
     is_isolated: bool = False
+    #: Id of the service group this node belongs to; None when ungrouped.
+    group: str | None = None
+
+
+class WorkspaceServiceGroup(BaseModel):
+    id: str
+    label: str
+    source: str  # tag | name | linked
+    member_count: int = 0
 
 
 class WorkspaceSystemEdge(BaseModel):
@@ -340,6 +349,17 @@ class WorkspaceSystemEdge(BaseModel):
     #: Strategy of the link that gave the edge its confidence (``manifest`` on
     #: a package edge); None on a co-change edge.
     strategy: str | None = None
+    #: runtime | data | build | history, from core's one kind-to-family table.
+    #: Filled from ``kind`` for an artifact written before edges carried it.
+    family: str | None = None
+
+    @model_validator(mode="after")
+    def _fill_family(self) -> WorkspaceSystemEdge:
+        if self.family is None:
+            from repowise.core.workspace.system_graph import edge_family
+
+            self.family = edge_family(self.kind)
+        return self
 
 
 class WorkspaceRepoDiagnostics(BaseModel):
@@ -483,6 +503,8 @@ class WorkspaceSystemGraphResponse(BaseModel):
     nodes: list[WorkspaceSystemNode] = []
     edges: list[WorkspaceSystemEdge] = []
     diagnostics: WorkspaceExtractionDiagnostics = WorkspaceExtractionDiagnostics()
+    #: Service groups; empty when the estate is too small to group.
+    groups: list[WorkspaceServiceGroup] = []
 
 
 class WorkspaceSystemMapEdge(WorkspaceSystemEdge):
@@ -502,6 +524,8 @@ class WorkspaceSystemGraphMapResponse(BaseModel):
     generated_at: str = ""
     nodes: list[WorkspaceSystemNode] = []
     edges: list[WorkspaceSystemMapEdge] = []
+    #: Service groups; empty when the estate is too small to group.
+    groups: list[WorkspaceServiceGroup] = []
 
 
 # ---------------------------------------------------------------------------

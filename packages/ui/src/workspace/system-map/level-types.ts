@@ -11,11 +11,17 @@
 import type { SystemEdge, SystemNode } from "@repowise-dev/types";
 import type { EdgeFamily } from "./edge-kinds";
 
-/** A service as the levels model reads it. `group` is the id of the system it belongs to, when grouped. */
+/** A service as the levels model reads it. `group` is the id of the system it belongs to, when the server grouped the estate. */
 export type LevelsNode = Pick<SystemNode, "id" | "name" | "repo"> & { group?: string | null };
 
-/** An edge as the levels model reads it. `source` depends on / calls `target`. */
-export type LevelsEdge = Pick<SystemEdge, "id" | "source" | "target" | "kind" | "weight" | "strategy">;
+/**
+ * An edge as the levels model reads it. `source` depends on / calls `target`.
+ * `family` is the server's filter family when the payload carries it; the
+ * kind registry answers for payloads that do not.
+ */
+export type LevelsEdge = Pick<SystemEdge, "id" | "source" | "target" | "kind" | "weight" | "strategy"> & {
+  family?: string | null;
+};
 
 /** Summary of one group, when the graph carries one. Only `id` is required. */
 export interface LevelsGroupMeta {
@@ -29,7 +35,8 @@ export interface LevelsGroupMeta {
 export interface LevelsGraph {
   nodes: readonly LevelsNode[];
   edges: readonly LevelsEdge[];
-  groups?: readonly LevelsGroupMeta[] | null;
+  /** Present and non-empty only when the server grouped the estate; absent means draw it flat. */
+  groups?: readonly LevelsGroupMeta[] | null | undefined;
 }
 
 /** At most this much is drawn at once; the rest is aggregated and reported. */

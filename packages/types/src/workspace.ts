@@ -204,6 +204,13 @@ export type SystemEdgeKind =
   | "co_change"
   | "db";
 
+/**
+ * What an edge kind means at the system level. Mirrors core's
+ * `EDGE_KIND_FAMILY` (`repowise.core.workspace.system_graph`), the one owner of
+ * kind-to-family; read `SystemEdge.family` rather than mapping kinds here.
+ */
+export type SystemEdgeFamily = "runtime" | "data" | "build" | "history";
+
 /** How confidently an edge was matched. Behavioral co-change edges are `inferred`. */
 export type SystemEdgeMatchType = "exact" | "candidate" | "manual" | "inferred";
 
@@ -227,6 +234,25 @@ export interface SystemNode {
   is_orphan_consumer: boolean;
   /** Participates in no edges. */
   is_isolated: boolean;
+  /** Id of the `ServiceGroup` this service belongs to; absent or null when ungrouped. */
+  group?: string | null;
+}
+
+/** Where a service group came from: a declared repo tag, a shared alias prefix, or linkage. */
+export type ServiceGroupSource = "tag" | "name" | "linked";
+
+/**
+ * A group of services the map can draw as one card. Mirrors
+ * `repowise.core.workspace.grouping.ServiceGroup`. Core alone decides when to
+ * group (`MIN_SERVICES_TO_GROUP`, `MIN_GROUPS`): a non-empty `groups` list is
+ * the answer, so a view never re-derives the gate.
+ */
+export interface ServiceGroup {
+  /** `tag:<name>`, `name:<prefix>` or `linked:<smallest member id>`. */
+  id: string;
+  label: string;
+  source: ServiceGroupSource;
+  member_count: number;
 }
 
 /** A typed, directed relationship between two services (`source` → `target`). */
@@ -250,6 +276,8 @@ export interface SystemEdge {
   ref_count?: number;
   /** Strategy of the link that gave the edge its confidence; null on a co-change edge. */
   strategy?: LinkStrategyWire | null;
+  /** The kind's family, set by core (an unknown kind is `history`). */
+  family?: SystemEdgeFamily | null;
 }
 
 export interface SystemGraph {
@@ -259,6 +287,8 @@ export interface SystemGraph {
   edges: SystemEdge[];
   /** Absent from the map's lean view, which reads `/api/workspace/diagnostics`. */
   diagnostics?: ExtractionDiagnostics;
+  /** Service groups; absent or empty when the estate is too small to group. */
+  groups?: ServiceGroup[];
 }
 
 // ---------------------------------------------------------------------------
