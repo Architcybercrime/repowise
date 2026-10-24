@@ -28,6 +28,8 @@ import { makeSyntheticSystemGraph } from "./fixtures/synthetic-system-graph";
 const SIZES = [30, 100, 300, 1000] as const;
 /** ELK runs for seconds at the top sizes; a few samples are enough there. */
 const SLOW = { iterations: 3, time: 0, warmupIterations: 1 } as const;
+/** ELK rows stop here: past it a cold layout of the drawn estate takes minutes in Node without a worker. */
+const ELK_MAX_SERVICES = 300;
 
 for (const services of SIZES) {
   const graph = makeSyntheticSystemGraph({
@@ -53,7 +55,10 @@ for (const services of SIZES) {
   );
   // What the canvas draws first: the estate (L0), its layout and its React Flow elements.
   const estate = buildLevelView(levels);
-  const estatePositions = await computeLevelLayout(levelLayoutInput(estate, graph.edges), { worker: false });
+  // A grid stands in for ELK's positions: toFlowElements reads them, it does not depend on their values.
+  const estatePositions = new Map(
+    estate.nodes.map((n, i) => [n.id, { x: (i % 12) * 260, y: Math.floor(i / 12) * 140, width: 240, height: 104 }] as const),
+  );
   const nodesById = new Map<string, SystemNode>(graph.nodes.map((n) => [n.id, n]));
   const edgesById = new Map<string, SystemEdge>(graph.edges.map((e) => [e.id, e]));
 
@@ -88,12 +93,14 @@ for (const services of SIZES) {
     bench("servicesBetween (runtime pair)", () => {
       servicesBetween(levels, caller, callee);
     });
-    bench("L0 layout: computeLevelLayout estate (ELK over the drawn view, cold cache)", async () => {
-      await computeLevelLayout(levelLayoutInput(buildLevelView(levels), graph.edges), { worker: false });
-    }, SLOW);
-    bench("open group layout: computeLevelLayout with one group open (cold cache)", async () => {
-      await computeLevelLayout(levelLayoutInput(view, graph.edges), { worker: false });
-    }, SLOW);
+    if (services <= ELK_MAX_SERVICES) {
+      bench("L0 layout: computeLevelLayout estate (ELK over the drawn view, cold cache)", async () => {
+        await computeLevelLayout(levelLayoutInput(buildLevelView(levels), graph.edges), { worker: false });
+      }, SLOW);
+      bench("open group layout: computeLevelLayout with one group open (cold cache)", async () => {
+        await computeLevelLayout(levelLayoutInput(view, graph.edges), { worker: false });
+      }, SLOW);
+    }
     bench("toFlowElements estate (cards, bands, health join)", () => {
       toFlowElements({ view: estate, positions: estatePositions, nodesById, edgesById });
     });
