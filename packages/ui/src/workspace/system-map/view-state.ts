@@ -3,7 +3,8 @@
  * is focused, which two services are compared, and which edge families are
  * drawn. A host keeps it in its URL (`open`, `focus`, `a`, `b`, `kinds`);
  * this module reads and writes those params and steps between levels, so
- * every host walks the levels the same way. Pure, no React.
+ * every host walks the levels the same way. The Map | List display rides
+ * along as `view` (absent is the default). Pure, no React.
  */
 
 import { DEFAULT_EDGE_FAMILIES, EDGE_FAMILY_ORDER, type EdgeFamily } from "./edge-families";
@@ -21,12 +22,16 @@ export interface MapViewState {
   between: { a: string; b: string } | null;
   /** Families drawn; null is the default (Runtime and Data). */
   families: readonly EdgeFamily[] | null;
+  /** Map or the services table; absent is the default (the map, the table on phones). */
+  display?: MapDisplay;
 }
+
+export type MapDisplay = "map" | "list";
 
 export const ESTATE_VIEW: MapViewState = { open: [], focus: null, between: null, families: null };
 
 /** The URL params the map state owns. */
-export const MAP_VIEW_PARAMS = ["open", "focus", "a", "b", "kinds"] as const;
+export const MAP_VIEW_PARAMS = ["open", "focus", "a", "b", "kinds", "view"] as const;
 
 const KNOWN_FAMILIES: ReadonlySet<string> = new Set(EDGE_FAMILY_ORDER);
 
@@ -45,11 +50,13 @@ export function parseMapView(get: (key: string) => string | null): MapViewState 
   const families = list(get("kinds")).filter((f): f is EdgeFamily => KNOWN_FAMILIES.has(f));
   const a = get("a");
   const b = get("b");
+  const display = get("view");
   return {
     open: list(get("open")),
     focus: get("focus") || null,
     between: a && b && a !== b ? { a, b } : null,
     families: families.length > 0 ? EDGE_FAMILY_ORDER.filter((f) => families.includes(f)) : null,
+    ...(display === "map" || display === "list" ? { display } : {}),
   };
 }
 
@@ -69,6 +76,7 @@ export function writeMapView(params: URLSearchParams, state: MapViewState): void
   if (state.families && !sameFamilies(state.families, DEFAULT_EDGE_FAMILIES)) {
     params.set("kinds", EDGE_FAMILY_ORDER.filter((f) => state.families!.includes(f)).join(","));
   }
+  if (state.display) params.set("view", state.display);
 }
 
 /** The families a state draws, as the levels model takes them. */
@@ -124,7 +132,22 @@ export function backOut(state: MapViewState): MapViewState | null {
 
 /** The estate with the same families drawn: the breadcrumb's root. */
 export function toEstate(state: MapViewState): MapViewState {
-  return { ...ESTATE_VIEW, families: state.families };
+  return { ...ESTATE_VIEW, families: state.families, ...(state.display ? { display: state.display } : {}) };
+}
+
+/** Focus one service (the focus level), leaving any comparison. */
+export function focusService(state: MapViewState, id: string): MapViewState {
+  return { ...state, focus: id, between: null };
+}
+
+/** Compare two services (the between level); the same id twice is no comparison. */
+export function compareServices(state: MapViewState, a: string, b: string): MapViewState {
+  return a === b ? state : { ...state, between: { a, b } };
+}
+
+/** Show the map or the services table. */
+export function withDisplay(state: MapViewState, display: MapDisplay): MapViewState {
+  return { ...state, display };
 }
 
 export function sameMapView(x: MapViewState, y: MapViewState): boolean {
@@ -133,6 +156,7 @@ export function sameMapView(x: MapViewState, y: MapViewState): boolean {
     x.focus === y.focus &&
     x.between?.a === y.between?.a &&
     x.between?.b === y.between?.b &&
-    [...drawnFamilies(x)].sort().join(",") === [...drawnFamilies(y)].sort().join(",")
+    [...drawnFamilies(x)].sort().join(",") === [...drawnFamilies(y)].sort().join(",") &&
+    x.display === y.display
   );
 }

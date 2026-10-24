@@ -32,8 +32,41 @@ export {
   backOut,
   toEstate,
   sameMapView,
+  focusService,
+  compareServices,
+  withDisplay,
   type MapViewState,
+  type MapDisplay,
 } from "./view-state";
+export { SystemMapSearch, type SystemMapSearchProps } from "./system-map-search";
+export { useSystemMapSearch, type MapSearch } from "./use-system-map-search";
+export {
+  buildSearchIndex,
+  searchMap,
+  routeHits,
+  pickToView,
+  SEARCH_LIMIT,
+  SEARCH_MIN_CHARS,
+  type SearchHit,
+  type MapSearchIndex,
+  type SystemMapRouteLink,
+  type SystemMapRouteLoader,
+} from "./search-index";
+export { shortcutFor, shortcutHelpRows, type MapShortcut, type ShortcutKey } from "./shortcuts";
+export { useMapNavigation, type MapNavigation } from "./use-map-navigation";
+export { SystemMapList, type SystemMapListProps } from "./system-map-list";
+export {
+  serviceRows,
+  sortServiceRows,
+  nextSort,
+  DEFAULT_SERVICE_SORT,
+  type ServiceRow,
+  type ServiceSort,
+  type ServiceSortKey,
+} from "./service-rows";
+export { SystemMapHealthMark } from "./system-map-health-mark";
+export { levelAnnouncement, type AnnounceArgs } from "./announce";
+export { DEFAULT_NAV_COPY, navCopyWith, type SystemMapNavCopy } from "./nav-copy";
 export { resolveSelection, type ResolvedSelection } from "./selection-fix";
 export { scopeCaption, hiddenFamiliesSentence, truncationSentence } from "./scope-caption";
 export {

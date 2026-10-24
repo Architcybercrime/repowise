@@ -8,13 +8,13 @@
  */
 
 import type { SystemEdge, SystemNode } from "@repowise-dev/types";
-import { healthMark } from "../../health/tokens";
 import { bandSentence, groupSourceLabel, healthCounts, healthSummaryText, kindMixText } from "./aggregate-facts";
 import { summarizeLinks } from "./bands";
 import type { DrawnBand, DrawnGroupNode, LinkSummary } from "./level-types";
 import { SystemMapRailFrame } from "./system-map-drawer";
 import { MICRO_LABEL } from "./system-map-filters";
 import { plural } from "./system-map-model";
+import { SystemMapHealthMark } from "./system-map-health-mark";
 import type { RepoHealth, SystemMapSelection } from "./types";
 
 const ROW =
@@ -64,26 +64,14 @@ export function GroupPanel({
       <section className="flex flex-col gap-1">
         <h3 className={MICRO_LABEL}>Services</h3>
         <ul className="flex flex-col">
-          {group.serviceIds.map((id) => {
-            const s = score(id);
-            const mark = s == null ? null : healthMark(s);
-            return (
-              <li key={id}>
-                <button type="button" className={ROW} onClick={() => onSelect({ type: "node", id })}>
-                  <span className="min-w-0 truncate text-xs text-[var(--color-text-primary)]">{nodesById.get(id)?.name ?? id}</span>
-                  {mark ? (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs">
-                      <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: mark.color }} />
-                      <span className="tabular-nums text-[var(--color-text-primary)]">{mark.value}</span>
-                      <span className="text-[var(--color-text-secondary)]">{mark.label}</span>
-                    </span>
-                  ) : (
-                    <span className="shrink-0 text-xs text-[var(--color-text-secondary)]">No score</span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
+          {group.serviceIds.map((id) => (
+            <li key={id}>
+              <button type="button" className={ROW} onClick={() => onSelect({ type: "node", id })}>
+                <span className="min-w-0 truncate text-xs text-[var(--color-text-primary)]">{nodesById.get(id)?.name ?? id}</span>
+                <SystemMapHealthMark score={score(id)} />
+              </button>
+            </li>
+          ))}
         </ul>
       </section>
     </SystemMapRailFrame>

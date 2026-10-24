@@ -51,6 +51,7 @@ import {
 import { httpLinkedStat } from "@/lib/http-link-coverage";
 import { markSystemMap, useSystemMapPerfMarks } from "@/lib/system-map-perf";
 import { useRepoContracts } from "./use-repo-contracts";
+import { loadRouteLinks, useSystemMapNavCopy } from "./use-system-map-nav";
 
 const LENSES: readonly SystemMapLens[] = ["none", "blast", "breaking", "conformance", "core"];
 /** URL params a selection is written to, one per selection type. */
@@ -72,6 +73,7 @@ function contractsHref(repo: string): string {
 export default function SystemMapPage() {
   const t = useTranslations("systemMap");
   const tLinks = useTranslations("linkCoverage");
+  const navCopy = useSystemMapNavCopy();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -266,6 +268,8 @@ export default function SystemMapPage() {
             onViewChange={onViewChange}
             estateLabel={t("estate")}
             onPhase={markSystemMap}
+            loadRoutes={loadRouteLinks}
+            navCopy={navCopy}
             drawer={drawer}
             toolbar={
               <SystemMapLensControl

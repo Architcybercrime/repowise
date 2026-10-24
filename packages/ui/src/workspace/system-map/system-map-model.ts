@@ -44,7 +44,7 @@ export interface SystemMapRepoContracts {
  */
 export type ServiceResolver = (repo: string, file: string) => string;
 
-export function serviceResolver(graph: SystemGraph): ServiceResolver {
+export function serviceResolver(graph: Pick<SystemGraph, "nodes">): ServiceResolver {
   const paths = new Map<string, string[]>();
   for (const n of graph.nodes) {
     if (!n.service_path) continue;
