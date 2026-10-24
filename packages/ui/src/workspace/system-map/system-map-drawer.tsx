@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * The System Map's detail drawer: one service or one relationship, with
- * everything needed to act on it. It is the shared `AdaptivePanel`, non-modal,
- * so the map stays interactive behind it and a click on another node swaps the
- * subject without closing and reopening.
+ * The System Map's detail rail: one service or one relationship, with
+ * everything needed to act on it. It renders in the canvas shell's rail slot,
+ * a grid peer of the canvas from `lg` and a bottom sheet below, so it never
+ * covers what it describes and a click on another card swaps the subject.
  *
- * Resolves the selection against the *drawn* graph. In repo view the ids the
- * map hands back are collapsed ones that only exist there.
+ * Resolves the selection against the whole graph, so a service or edge the
+ * current level folds into a group or band still has its details.
  *
  * Presentation only. The host fetches the focused repository's contracts and
  * owns every route; the drawer takes href builders, not a router.
@@ -23,7 +23,7 @@ import type {
   SystemNode,
   WorkspaceContractLinkEntry,
 } from "@repowise-dev/types/workspace";
-import { AdaptivePanel } from "../../shared/adaptive-panel";
+import { X } from "lucide-react";
 import { FilePath } from "../../shared/file-path";
 import { AiPromptButton } from "../../health/ai-prompt-button";
 import { AiPromptModal } from "../../health/ai-prompt-modal";
@@ -91,11 +91,7 @@ export interface SystemMapDrawerData {
 
 export interface SystemMapDrawerProps extends SystemMapDrawerData {
   selection: SystemMapSelection;
-  /** The drawn graph (collapse + filters applied). */
   graph: SystemGraph;
-  /** The raw graph, for diagnostics and service boundaries. */
-  rawGraph: SystemGraph;
-  collapsed: boolean;
   healthByRepo?: ReadonlyMap<string, RepoHealth> | undefined;
   roleByNodeId?: ReadonlyMap<string, NodeArchitectureRole> | undefined;
   onClose: () => void;
@@ -104,12 +100,13 @@ export interface SystemMapDrawerProps extends SystemMapDrawerData {
 
 /**
  * The repository whose contracts the drawer needs for a selection, so the host
- * can fetch before the drawer asks. Accepts raw and collapsed ids.
+ * can fetch before the drawer asks. Groups and bands name no one repository.
  */
 export function selectionRepo(graph: SystemGraph | null, selection: SystemMapSelection): string | null {
   if (!graph || !selection) return null;
-  const repoOfNode = (id: string) =>
-    graph.nodes.find((n) => n.id === id)?.repo ?? (graph.nodes.some((n) => n.repo === id) ? id : null);
+  // Groups and bands hold several services, so no one repository.
+  if (selection.type === "group" || selection.type === "band") return null;
+  const repoOfNode = (id: string) => graph.nodes.find((n) => n.id === id)?.repo ?? null;
   if (selection.type === "node") return repoOfNode(selection.id);
   const edge = graph.edges.find((e) => e.id === selection.id);
   if (edge) return repoOfNode(edge.source);
@@ -123,34 +120,68 @@ interface PromptState {
   build: (flavor: AiPromptFlavor) => string;
 }
 
+/** Whether the rail has anything to say about a selection; the map shows no rail otherwise. */
+export function drawerHasSubject(graph: SystemGraph, selection: SystemMapSelection): boolean {
+  if (selection?.type === "node") return graph.nodes.some((n) => n.id === selection.id);
+  if (selection?.type === "edge") return graph.edges.some((e) => e.id === selection.id);
+  return false;
+}
+
+/** Eyebrow, title and a close button over a scrolling body: the rail's one frame. */
+export function SystemMapRailFrame({
+  eyebrow,
+  title,
+  onClose,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" role="region" aria-label={title}>
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-border-default)] px-4 py-3">
+        <div className="min-w-0">
+          <div className={MICRO_LABEL}>{eyebrow}</div>
+          <h2 className="mt-0.5 text-[15px] font-semibold text-[var(--color-text-primary)] [overflow-wrap:anywhere]">
+            {title}
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close details"
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+        >
+          <X size={14} aria-hidden />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">{children}</div>
+    </div>
+  );
+}
+
 export function SystemMapDrawer(props: SystemMapDrawerProps) {
-  const { selection, graph, rawGraph, collapsed, onClose } = props;
+  const { selection, graph, onClose } = props;
   const [prompt, setPrompt] = useState<PromptState | null>(null);
-  const resolve = useMemo(() => serviceResolver(rawGraph, collapsed), [rawGraph, collapsed]);
+  const resolve = useMemo(() => serviceResolver(graph), [graph]);
 
   const node = selection?.type === "node" ? graph.nodes.find((n) => n.id === selection.id) ?? null : null;
   const edge = selection?.type === "edge" ? graph.edges.find((e) => e.id === selection.id) ?? null : null;
-  const open = Boolean(node || edge);
   const name = (id: string) => graph.nodes.find((n) => n.id === id)?.name ?? id;
+  if (!node && !edge) return null;
 
   return (
     <>
-      <AdaptivePanel
-        open={open}
-        onOpenChange={(next) => {
-          if (!next) onClose();
-        }}
-        modal={false}
-        // The map, the rows below it and the drawer are one workspace: a click
-        // elsewhere selects something else or does nothing, never closes this.
-        onInteractOutside={(e) => e.preventDefault()}
+      <SystemMapRailFrame
         eyebrow={node ? nodeKindStyle(node.kind).label : "Relationship"}
         title={node ? node.name : edge ? `${name(edge.source)} → ${name(edge.target)}` : ""}
-        widthClassName="md:max-w-[480px]"
+        onClose={onClose}
       >
         {node && <NodeBody {...props} node={node} resolve={resolve} onPrompt={setPrompt} />}
         {edge && <EdgeBody {...props} edge={edge} resolve={resolve} onPrompt={setPrompt} />}
-      </AdaptivePanel>
+      </SystemMapRailFrame>
       <AiPromptModal
         open={prompt !== null}
         onOpenChange={(o) => !o && setPrompt(null)}
@@ -250,8 +281,6 @@ type BodyProps<T> = SystemMapDrawerProps & {
 function NodeBody({
   node,
   graph,
-  rawGraph,
-  collapsed,
   healthByRepo,
   roleByNodeId,
   repoContracts,
@@ -270,16 +299,15 @@ function NodeBody({
   const health = healthByRepo?.get(node.repo);
   // Repo health arrives 0-100; the mark reads 0-10.
   const mark = health ? healthMark(health.score / 10) : null;
-  // Roles are computed per service, so a merged repo node has none.
-  const role = collapsed ? undefined : roleByNodeId?.get(node.id);
+  const role = roleByNodeId?.get(node.id);
   const style = role ? roleStyle(role.role) : null;
   const reaches = role ? Math.max(role.visibility_fan_out - 1, 0) : 0;
   const reachedBy = role ? Math.max(role.visibility_fan_in - 1, 0) : 0;
 
   const out = neighbourGroups(graph, node.id, "out");
   const incoming = neighbourGroups(graph, node.id, "in");
-  const myCycles = collapsed ? [] : cyclesThrough(cycles, node.id);
-  const diag = serviceDiagnostics(diagnostics ?? rawGraph.diagnostics, node.id, resolve);
+  const myCycles = cyclesThrough(cycles, node.id);
+  const diag = serviceDiagnostics(diagnostics ?? graph.diagnostics, node.id, resolve);
   const summary = useMemo(
     () => (repoContracts ? summarizeServiceContracts(repoContracts, node.id, resolve) : null),
     [repoContracts, node.id, resolve],
@@ -352,7 +380,7 @@ function NodeBody({
           },
           {
             label: "Architecture role",
-            value: style ? style.label : <span className="text-xs text-[var(--color-text-tertiary)]">{collapsed ? "Per service only" : "Not computed"}</span>,
+            value: style ? style.label : <span className="text-xs text-[var(--color-text-tertiary)]">Not computed</span>,
           },
           { label: "Outgoing to", value: <span className="tabular-nums">{plural(distinct(out, (e) => e.target), "service", "services")}</span> },
           { label: "Incoming from", value: <span className="tabular-nums">{plural(distinct(incoming, (e) => e.source), "service", "services")}</span> },
@@ -407,7 +435,7 @@ function NodeBody({
                 <AiPromptButton
                   variant="icon"
                   label="Break this cycle with AI"
-                  onClick={() => onPrompt(cyclePrompt(c, rawGraph))}
+                  onClick={() => onPrompt(cyclePrompt(c, graph))}
                 />
               </li>
             ))}
@@ -579,11 +607,9 @@ const MATCH_MEANING: Record<string, string> = {
 function EdgeBody({
   edge,
   graph,
-  rawGraph,
   repoContracts,
   repoContractsLoading,
   cycles = [],
-  collapsed,
   contractHref,
   contractsHref,
   coChangesHref,
@@ -610,7 +636,7 @@ function EdgeBody({
   const pairs = edge.structural ? [] : coChangePairs(edge);
   // The lean map view sends a structural edge's count, not its refs.
   const keptRefs = edge.contract_refs ? refs.length : (edge.ref_count ?? 0);
-  const myCycles = collapsed ? [] : cyclesWithEdge(cycles, edge.id);
+  const myCycles = cyclesWithEdge(cycles, edge.id);
   const name = (id: string) => nodeOf(id)?.name ?? id;
 
   const openEdgePrompt = () =>
@@ -703,7 +729,7 @@ function EdgeBody({
             <div key={c.edge_ids.join("|")} className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-secondary)]">
               <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]" />
               This edge closes a cycle: {c.nodes.map(name).join(" → ")} → {name(c.nodes[0] ?? "")}.
-              <AiPromptButton label="Break the cycle" onClick={() => onPrompt(cyclePrompt(c, rawGraph))} />
+              <AiPromptButton label="Break the cycle" onClick={() => onPrompt(cyclePrompt(c, graph))} />
             </div>
           ))}
         </Section>

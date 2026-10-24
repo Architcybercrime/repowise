@@ -57,7 +57,8 @@ const FALLBACK_KIND: SystemEdgeKindStyle = {
   color: "var(--color-text-tertiary)",
   icon: ArrowRight,
   category: "structural",
-  family: "runtime",
+  // Core sends an unknown kind as History; payloads without `family` agree.
+  family: "history",
 };
 
 /** Resolve the style for an edge kind, tolerant of an unknown future kind. */

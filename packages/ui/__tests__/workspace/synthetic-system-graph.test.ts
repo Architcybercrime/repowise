@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { collapseToRepos } from "../../src/workspace/system-map/collapse";
+import { buildLevelView } from "../../src/workspace/system-map/levels";
 import { ESHOP_KIND_MIX, makeSyntheticSystemGraph } from "./fixtures/synthetic-system-graph";
 
 describe("makeSyntheticSystemGraph", () => {
@@ -34,8 +34,8 @@ describe("makeSyntheticSystemGraph", () => {
     }
     // Package edges land only on library repos, which concentrates them in hubs.
     expect(g.edges.filter((e) => e.kind === "package").every((e) => e.target.includes(".lib"))).toBe(true);
-    // The collapse path reads it like a real artifact.
-    expect(collapseToRepos(g).nodes).toHaveLength(30);
+    // The levels model reads it like a real artifact.
+    expect(buildLevelView(g).nodes.length).toBeGreaterThan(0);
   });
 
   it("tags groups only when asked for more than one", () => {

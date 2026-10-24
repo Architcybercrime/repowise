@@ -13,14 +13,16 @@
 
 import type { C4LayoutEdge, C4LayoutNode, C4LayoutPosition } from "../../c4/layout/elk-c4-layout";
 import { compareIds } from "./bands";
-import { edgeFamily } from "./edge-families";
-import { SYSTEM_MAP_NODE_SIZE } from "./layout";
+import { edgeFamilyOf } from "./edge-families";
 import type { DrawnNode, LevelsEdge } from "./level-types";
 
 interface Size {
   width: number;
   height: number;
 }
+
+/** A service card's footprint on the map. */
+export const SYSTEM_MAP_NODE_SIZE = { width: 208, height: 96 } as const;
 
 /** Card footprints per drawn node type. Open containers are sized from their interior. */
 export interface LevelNodeSizes {
@@ -67,7 +69,7 @@ function nodeSize(n: DrawnNode, sizes: LevelNodeSizes): Size {
 
 /** Every family but History shapes placement; co-change is undirected and would add layers. */
 function shapesLayout(e: LevelsEdge): boolean {
-  return e.source !== e.target && edgeFamily(e.kind) !== "history";
+  return e.source !== e.target && edgeFamilyOf(e) !== "history";
 }
 
 interface Placement {

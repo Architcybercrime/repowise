@@ -1983,6 +1983,7 @@
     }
   },
   "systemMap": {
+    "estate": "服务全景",
     "title": "系统地图",
     "description": "服务及它们之间的带类型关系，每次工作区更新都会从代码与 git 历史重建。",
     "section": {

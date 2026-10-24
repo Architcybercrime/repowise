@@ -1983,6 +1983,7 @@
     }
   },
   "systemMap": {
+    "estate": "Estate",
     "title": "System map",
     "description": "Services and the typed relationships between them, rebuilt from code and git history on every workspace update.",
     "section": {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -16,7 +16,10 @@ import {
   buildBlastRadiusOverlay,
   buildBreakingChangeOverlay,
   buildConformanceOverlay,
+  parseMapView,
   selectionRepo,
+  writeMapView,
+  type MapViewState,
   type ContractRef,
   type RepoHealth,
   type SegmentOption,
@@ -50,6 +53,8 @@ import { markSystemMap, useSystemMapPerfMarks } from "@/lib/system-map-perf";
 import { useRepoContracts } from "./use-repo-contracts";
 
 const LENSES: readonly SystemMapLens[] = ["none", "blast", "breaking", "conformance", "core"];
+/** URL params a selection is written to, one per selection type. */
+const SELECTION_PARAMS = ["node", "edge", "group", "band"] as const;
 
 /** The minimal translator shape the copy helpers below need; next-intl's `t` fits. */
 type Translator = (key: string, values?: Record<string, string | number>) => string;
@@ -84,14 +89,15 @@ export default function SystemMapPage() {
 
   useSystemMapPerfMarks(graph);
 
-  // Selection, lens and blast target live in the URL, so a view can be linked to.
+  // Selection, level, lens and blast target live in the URL, so a view can be linked to.
   const selection = useMemo<SystemMapSelection>(() => {
-    const node = searchParams.get("node");
-    if (node) return { type: "node", id: node };
-    const edge = searchParams.get("edge");
-    if (edge) return { type: "edge", id: edge };
+    for (const type of SELECTION_PARAMS) {
+      const id = searchParams.get(type);
+      if (id) return { type, id };
+    }
     return null;
   }, [searchParams]);
+  const mapView = useMemo(() => parseMapView((key) => searchParams.get(key)), [searchParams]);
   const lensOptions = useMemo(
     () =>
       lensOptionsFor(t, graph, breaking, conformance, architecture, {
@@ -119,11 +125,18 @@ export default function SystemMapPage() {
       : "none";
   const blastTarget = lens === "blast" ? searchParams.get("from") : null;
 
+  // The query last written but not yet rendered: a second edit in the same
+  // tick builds on it, so neither edit is lost.
+  const pendingQuery = useRef<string | null>(null);
+  useEffect(() => {
+    pendingQuery.current = null;
+  }, [searchParams]);
   const replaceParams = useCallback(
     (edit: (p: URLSearchParams) => void) => {
-      const params = new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams(pendingQuery.current ?? searchParams.toString());
       edit(params);
       const query = params.toString();
+      pendingQuery.current = query;
       // `replace`, not `push`: exploring a diagram should not fill the back button.
       router.replace(query ? `?${query}` : "/workspace/system-map", { scroll: false });
     },
@@ -133,10 +146,13 @@ export default function SystemMapPage() {
   const onSelectionChange = useCallback(
     (next: SystemMapSelection) =>
       replaceParams((p) => {
-        p.delete("node");
-        p.delete("edge");
+        for (const key of SELECTION_PARAMS) p.delete(key);
         if (next) p.set(next.type, next.id);
       }),
+    [replaceParams],
+  );
+  const onViewChange = useCallback(
+    (next: MapViewState) => replaceParams((p) => writeMapView(p, next)),
     [replaceParams],
   );
 
@@ -246,6 +262,9 @@ export default function SystemMapPage() {
             {...(overlay ? { overlay } : {})}
             selection={selection}
             onSelectionChange={onSelectionChange}
+            view={mapView}
+            onViewChange={onViewChange}
+            estateLabel={t("estate")}
             onPhase={markSystemMap}
             drawer={drawer}
             toolbar={

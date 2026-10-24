@@ -7,20 +7,16 @@
  *
  * The architecture role is a word, not a colour: the health mark already owns
  * green, amber and red on this object, and a second mark in the same
- * vocabulary would read as a second health reading.
+ * vocabulary would read as a second health reading. Lens marks are ink
+ * badges for the same reason (`system-map-lens-badge.tsx`).
  */
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { healthMark } from "../../health/tokens";
-import { SYSTEM_MAP_NODE_SIZE } from "./layout";
+import { SYSTEM_MAP_NODE_SIZE } from "./layout-scopes";
+import { SystemMapLensBadge } from "./system-map-lens-badge";
 import type { SystemMapNodeData } from "./types";
-
-function badgeColor(tone: "danger" | "warning" | "info"): string {
-  if (tone === "danger") return "var(--color-error)";
-  if (tone === "warning") return "var(--color-warning)";
-  return "var(--color-text-secondary)";
-}
 
 function SystemMapNodeInner({ data, selected }: NodeProps) {
   const { node, health, overlay, role } = data as unknown as SystemMapNodeData;
@@ -60,24 +56,7 @@ function SystemMapNodeInner({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Top} style={{ opacity: 0, pointerEvents: "none" }} />
 
       {overlay?.badge && (
-        <span
-          style={{
-            position: "absolute",
-            top: -9,
-            right: 10,
-            padding: "0 6px",
-            borderRadius: 4,
-            background: "var(--color-bg-surface)",
-            border: `1px solid ${badgeColor(overlay.badge.tone)}`,
-            color: badgeColor(overlay.badge.tone),
-            fontFamily: "var(--font-mono, ui-monospace, monospace)",
-            fontSize: 10,
-            lineHeight: "16px",
-            fontWeight: 600,
-          }}
-        >
-          {overlay.badge.label}
-        </span>
+        <SystemMapLensBadge badge={overlay.badge} style={{ position: "absolute", top: -9, right: 10 }} />
       )}
 
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, minWidth: 0 }}>
@@ -104,7 +83,7 @@ function SystemMapNodeInner({ data, selected }: NodeProps) {
               fontSize: 10,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
-              color: "var(--color-text-tertiary)",
+              color: "var(--color-text-secondary)",
             }}
           >
             {role}
@@ -121,7 +100,7 @@ function SystemMapNodeInner({ data, selected }: NodeProps) {
           fontFamily: "var(--font-mono, ui-monospace, monospace)",
           fontSize: 10,
           lineHeight: "14px",
-          color: "var(--color-text-tertiary)",
+          color: "var(--color-text-secondary)",
         }}
       >
         {where}

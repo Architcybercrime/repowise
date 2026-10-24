@@ -5,6 +5,7 @@ import {
   DEFAULT_EDGE_FAMILIES,
   EDGE_FAMILY_ORDER,
   edgeFamily,
+  edgeFamilyOf,
   familyCounts,
   linkWeight,
 } from "../../src/workspace/system-map/edge-families";
@@ -23,8 +24,10 @@ describe("edge families", () => {
     expect([...DEFAULT_EDGE_FAMILIES]).toEqual(["runtime", "data"]);
   });
 
-  it("draws an unknown future kind as Runtime rather than hiding it", () => {
-    expect(edgeFamily("graphql")).toBe("runtime");
+  it("reads the family core sent, and files an unknown kind under History without one", () => {
+    expect(edgeFamily("graphql")).toBe("history");
+    expect(edgeFamilyOf({ kind: "graphql", family: "runtime" })).toBe("runtime");
+    expect(edgeFamilyOf({ kind: "http", family: null })).toBe("runtime");
   });
 
   it("counts edges and links per family present", () => {

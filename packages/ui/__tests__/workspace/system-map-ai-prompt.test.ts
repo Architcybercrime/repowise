@@ -92,11 +92,10 @@ const graph: SystemGraph = {
 };
 
 describe("system map model", () => {
-  it("puts a file in its deepest service, else the repo root, and in its repo when collapsed", () => {
-    const resolve = serviceResolver(graph, false);
+  it("puts a file in its deepest service, else the repo root", () => {
+    const resolve = serviceResolver(graph);
     expect(resolve("mono", "packages/web/src/x.ts")).toBe("mono::packages/web");
     expect(resolve("mono", "packages/website/x.ts")).toBe("mono");
-    expect(serviceResolver(graph, true)("mono", "packages/web/x.ts")).toBe("mono");
   });
 
   it("counts a service's contracts by role and type, most linked first", () => {
@@ -112,7 +111,7 @@ describe("system map model", () => {
         total: 4,
       },
       "mono::packages/web",
-      serviceResolver(graph, false),
+      serviceResolver(graph),
     );
     expect(summary.consumes).toEqual({ http: 2 });
     expect(summary.provides).toEqual({ code: 1 });
@@ -120,7 +119,7 @@ describe("system map model", () => {
   });
 
   it("attributes unmatched consumers and unused providers to the owning service", () => {
-    const resolve = serviceResolver(graph, false);
+    const resolve = serviceResolver(graph);
     expect(serviceDiagnostics(graph.diagnostics, "mono::packages/web", resolve)).toEqual({
       unmatched: 1,
       unmatchedByReason: { no_provider: 1 },
@@ -134,7 +133,7 @@ describe("system map model", () => {
     const links = edgeLinks(
       e,
       [link({}), link({ consumer_file: "server/r.py" }), link({ contract_type: "code" }), link({})],
-      serviceResolver(graph, false),
+      serviceResolver(graph),
     );
     // Wrong service, wrong type and a duplicate are all dropped.
     expect(links).toHaveLength(1);

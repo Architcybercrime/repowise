@@ -15,17 +15,12 @@ import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 import { edgeKindStyle, edgeLabel, matchTypeDash } from "./edge-kinds";
 import { useEdgeActive } from "./system-map-focus";
+import { SystemMapLensBadge } from "./system-map-lens-badge";
 import { weightShort } from "./system-map-model";
 import type { SystemMapEdgeData } from "./types";
 
 function strokeWidth(weight: number): number {
   return Math.min(1 + Math.log2(weight + 1) * 0.4, 3.2);
-}
-
-function badgeColor(tone: "danger" | "warning" | "info"): string {
-  if (tone === "danger") return "var(--color-error)";
-  if (tone === "warning") return "var(--color-warning)";
-  return "var(--color-text-secondary)";
 }
 
 function SystemMapEdgeInner(props: EdgeProps) {
@@ -98,11 +93,7 @@ function SystemMapEdgeInner(props: EdgeProps) {
           >
             <Icon size={10} aria-hidden style={{ flexShrink: 0 }} />
             {edgeLabel(edge)} · {weightShort(edge)}
-            {overlay?.badge && (
-              <span style={{ color: badgeColor(overlay.badge.tone), fontWeight: 600 }}>
-                · {overlay.badge.label}
-              </span>
-            )}
+            {overlay?.badge && <SystemMapLensBadge badge={overlay.badge} style={{ marginLeft: 2 }} />}
           </div>
         </EdgeLabelRenderer>
       )}

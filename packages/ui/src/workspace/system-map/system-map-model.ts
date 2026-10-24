@@ -39,14 +39,12 @@ export interface SystemMapRepoContracts {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolves `(repo, file)` to the node that owns it on the drawn graph. A file
- * belongs to the deepest declared service path containing it, else to the
- * repo-root node; in repo view every file belongs to its repo.
+ * Resolves `(repo, file)` to the service that owns it. A file belongs to the
+ * deepest declared service path containing it, else to the repo-root node.
  */
 export type ServiceResolver = (repo: string, file: string) => string;
 
-export function serviceResolver(graph: SystemGraph, collapsed: boolean): ServiceResolver {
-  if (collapsed) return (repo) => repo;
+export function serviceResolver(graph: SystemGraph): ServiceResolver {
   const paths = new Map<string, string[]>();
   for (const n of graph.nodes) {
     if (!n.service_path) continue;
@@ -344,53 +342,4 @@ export function unmatchedReasonList(byReason: Record<string, number>): string {
     .sort((a, b) => b[1] - a[1])
     .map(([r, n]) => `${n.toLocaleString()} ${UNMATCHED_REASON[r] ?? r}`)
     .join(", ");
-}
-
-// ---------------------------------------------------------------------------
-// Selections against the drawn graph.
-// ---------------------------------------------------------------------------
-
-export type ViewSelectionFix = { kind: "show-edge-kind"; edgeKind: SystemEdgeKind } | { kind: "expand" } | null;
-
-/**
- * Lists below the map, and the URL, name raw service and edge ids. The drawn
- * graph may be collapsed to repositories or missing a hidden edge kind. Maps
- * the selection onto what is drawn, or says what the map must change to draw
- * it: show a hidden kind, or return to the service view for an edge inside
- * one repository.
- */
-export function resolveViewSelection(
-  selection: { type: "node" | "edge"; id: string } | null,
-  raw: SystemGraph,
-  view: SystemGraph,
-  collapsed: boolean,
-): { selection: { type: "node" | "edge"; id: string } | null; fix: ViewSelectionFix } {
-  if (!selection) return { selection: null, fix: null };
-  const drawn =
-    selection.type === "node"
-      ? view.nodes.some((n) => n.id === selection.id)
-      : view.edges.some((e) => e.id === selection.id);
-  if (drawn) return { selection, fix: null };
-
-  const repoOf = (id: string) => raw.nodes.find((n) => n.id === id)?.repo;
-  if (selection.type === "node") {
-    const repo = collapsed ? repoOf(selection.id) : undefined;
-    return { selection: repo ? { type: "node", id: repo } : null, fix: null };
-  }
-
-  const edge = raw.edges.find((e) => e.id === selection.id);
-  if (!edge) {
-    // A collapsed id whose kind is hidden.
-    const kind = selection.id.split("::").pop() as SystemEdgeKind | undefined;
-    const known = kind && raw.edges.some((e) => e.kind === kind);
-    return { selection: null, fix: collapsed && known ? { kind: "show-edge-kind", edgeKind: kind } : null };
-  }
-  if (!collapsed) return { selection: null, fix: { kind: "show-edge-kind", edgeKind: edge.kind } };
-  const src = repoOf(edge.source);
-  const tgt = repoOf(edge.target);
-  if (!src || !tgt || src === tgt) return { selection: null, fix: { kind: "expand" } };
-  const merged = `${src}->${tgt}::${edge.kind}`;
-  return view.edges.some((e) => e.id === merged)
-    ? { selection: { type: "edge", id: merged }, fix: null }
-    : { selection: null, fix: { kind: "show-edge-kind", edgeKind: edge.kind } };
 }

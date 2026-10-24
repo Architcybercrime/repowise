@@ -7,7 +7,6 @@
  */
 
 import { useEffect, useRef } from "react";
-import type { SystemGraph } from "@repowise-dev/types";
 
 /**
  * `aggregate`: a new drawn graph is computed (every view change). `layout`: a
@@ -18,7 +17,7 @@ export type SystemMapPhase = "aggregate" | "layout" | "paint";
 
 export function useSystemMapPhases(
   onPhase: ((phase: SystemMapPhase) => void) | undefined,
-  viewGraph: SystemGraph | null,
+  viewGraph: { nodes: readonly unknown[] } | null,
   layoutLoading: boolean,
 ): void {
   const notify = useRef(onPhase);

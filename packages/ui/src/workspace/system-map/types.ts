@@ -101,8 +101,14 @@ export function resolveEdgeOverlay(
   return { highlighted, dimmed, ...(badge ? { badge } : {}) };
 }
 
-/** Either a node or an edge selected in the map (drives the inspector). */
+/**
+ * What the map has selected (drives the rail). `node` is a service id and
+ * `edge` a system edge id, so a host can put either in its URL; `group` is a
+ * group id and `band` the id of a band drawn at the current level.
+ */
 export type SystemMapSelection =
   | { type: "node"; id: string }
   | { type: "edge"; id: string }
+  | { type: "group"; id: string }
+  | { type: "band"; id: string }
   | null;
