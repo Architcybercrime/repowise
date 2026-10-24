@@ -1,8 +1,8 @@
 /**
  * Edge families: the four groups the map filters by (Runtime, Data, Build,
- * History). Core owns kind-to-family and sends it on every edge
- * (`SystemEdge.family`); the kind registry's `family` column is only the
- * fallback for payloads written before that field existed. Pure, no React.
+ * History). Which kind belongs to which family lives on the kind registry
+ * (`SYSTEM_EDGE_KINDS[kind].family`), so a new transport declares its family
+ * in the one row it already adds. Pure, no React.
  */
 
 import { edgeKindStyle, type EdgeFamily } from "./edge-kinds";
@@ -23,11 +23,7 @@ export const DEFAULT_EDGE_FAMILIES: ReadonlySet<EdgeFamily> = new Set<EdgeFamily
  */
 export const LINKED_FAMILIES: ReadonlySet<EdgeFamily> = DEFAULT_EDGE_FAMILIES;
 
-/**
- * The fallback family of an edge kind, for a payload with no `family`. An
- * unknown kind is History, as core classifies it, so it is opt-in rather than
- * drawn as a call.
- */
+/** The family of an edge kind from the registry; an unknown kind is History, as in core. */
 export function edgeFamily(kind: string): EdgeFamily {
   return edgeKindStyle(kind).family;
 }
@@ -38,7 +34,7 @@ const FAMILIES: ReadonlySet<string> = new Set(EDGE_FAMILY_ORDER);
  * An edge's family: the `family` the server sent when it is one we know,
  * else the kind registry's (payloads written before the field existed).
  */
-export function edgeFamilyOf(edge: { kind: string; family?: string | null }): EdgeFamily {
+export function edgeFamilyOf(edge: { kind: string; family?: string | null | undefined }): EdgeFamily {
   const sent = edge.family;
   return sent && FAMILIES.has(sent) ? (sent as EdgeFamily) : edgeFamily(edge.kind);
 }
@@ -52,7 +48,7 @@ export interface FamilyCount {
 
 /** Edge and link counts per family, for the chips and the "hidden" caption. Only families present appear. */
 export function familyCounts(
-  edges: Iterable<{ kind: string; family?: string | null; weight: number }>,
+  edges: Iterable<{ kind: string; family?: string | null | undefined; weight: number }>,
 ): Partial<Record<EdgeFamily, FamilyCount>> {
   const out: Partial<Record<EdgeFamily, FamilyCount>> = {};
   for (const e of edges) {
@@ -79,7 +75,7 @@ export const EDGE_FAMILY_COPY: Record<EdgeFamily, { label: string; meaning: stri
 
 /** Edges per kind inside each family, for a chip's hover ("HTTP 7, Event 9"). */
 export function kindCountsByFamily(
-  edges: Iterable<{ kind: string; family?: string | null }>,
+  edges: Iterable<{ kind: string; family?: string | null | undefined }>,
 ): Partial<Record<EdgeFamily, Record<string, number>>> {
   const out: Partial<Record<EdgeFamily, Record<string, number>>> = {};
   for (const e of edges) {
