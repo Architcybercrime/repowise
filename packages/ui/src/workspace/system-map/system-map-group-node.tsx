@@ -17,6 +17,7 @@ import { healthExceptions, healthSummaryText } from "./aggregate-facts";
 import type { GroupNodeData } from "./flow-elements";
 import { LEVEL_NODE_SIZES } from "./layout-scopes";
 import { useSystemMapActions } from "./system-map-actions";
+import { CardAction, HIDDEN_HANDLE } from "./system-map-card-action";
 import { plural } from "./system-map-model";
 
 const MONO: CSSProperties = {
@@ -37,37 +38,6 @@ const TITLE: CSSProperties = {
   fontWeight: 600,
   color: "var(--color-text-primary)",
 };
-
-const HIDDEN_HANDLE: CSSProperties = { opacity: 0, pointerEvents: "none" };
-
-/** The card's one verb. Out of the tab order: Enter on the card does the same. */
-function CardAction({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      tabIndex={-1}
-      className="nodrag nopan"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      onDoubleClick={(e) => e.stopPropagation()}
-      style={{
-        flexShrink: 0,
-        border: 0,
-        background: "transparent",
-        padding: 0,
-        cursor: "pointer",
-        fontSize: 12,
-        lineHeight: "16px",
-        fontWeight: 500,
-        color: "var(--color-accent-primary)",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
 
 function frame(selected: boolean, highlighted: boolean): CSSProperties {
   return {

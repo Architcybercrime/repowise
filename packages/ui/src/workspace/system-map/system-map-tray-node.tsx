@@ -13,6 +13,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { MoreNodeData, TrayNodeData } from "./flow-elements";
 import { LEVEL_NODE_SIZES } from "./layout-scopes";
 import { useSystemMapActions } from "./system-map-actions";
+import { CardAction, HIDDEN_HANDLE } from "./system-map-card-action";
 import { plural } from "./system-map-model";
 import { TRAY_OPEN_TOKEN } from "./view-state";
 
@@ -26,8 +27,6 @@ const MONO: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const HIDDEN_HANDLE: CSSProperties = { opacity: 0, pointerEvents: "none" };
-
 function dashed(selected: boolean): CSSProperties {
   return {
     boxSizing: "border-box",
@@ -35,24 +34,6 @@ function dashed(selected: boolean): CSSProperties {
     border: `1px dashed ${selected ? "var(--color-accent-primary)" : "var(--color-border-hover)"}`,
     background: "transparent",
   };
-}
-
-function Action({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      tabIndex={-1}
-      className="nodrag nopan"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      onDoubleClick={(e) => e.stopPropagation()}
-      style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", fontSize: 12, lineHeight: "16px", fontWeight: 500, color: "var(--color-accent-primary)" }}
-    >
-      {label}
-    </button>
-  );
 }
 
 function TrayNodeInner({ data, selected }: NodeProps) {
@@ -68,7 +49,7 @@ function TrayNodeInner({ data, selected }: NodeProps) {
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)" }}>Not linked at runtime</span>
           <span style={{ ...MONO, flexShrink: 0 }}>{plural(count, "service", "services")}</span>
           <span style={{ flex: 1 }} />
-          <Action label="Close" onClick={() => actions.closeContainer(TRAY_OPEN_TOKEN)} />
+          <CardAction label="Close" onClick={() => actions.closeContainer(TRAY_OPEN_TOKEN)} />
         </div>
         <Handle type="source" position={Position.Bottom} style={HIDDEN_HANDLE} />
       </div>
@@ -91,7 +72,7 @@ function TrayNodeInner({ data, selected }: NodeProps) {
       </span>
       <span style={{ fontSize: 12, lineHeight: "16px", color: "var(--color-text-secondary)" }}>No runtime or data link.</span>
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "auto" }}>
-        <Action label="Open ›" onClick={() => actions.openContainer(TRAY_OPEN_TOKEN)} />
+        <CardAction label="Open ›" onClick={() => actions.openContainer(TRAY_OPEN_TOKEN)} />
       </div>
       <Handle type="source" position={Position.Bottom} style={HIDDEN_HANDLE} />
     </div>
@@ -115,7 +96,7 @@ function MoreNodeInner({ data, selected }: NodeProps) {
       </span>
       {showFolded && (
         <div style={{ marginTop: "auto" }}>
-          <Action label="List them" onClick={() => showFolded(more.serviceIds)} />
+          <CardAction label="List them" onClick={() => showFolded(more.serviceIds)} />
         </div>
       )}
       <Handle type="source" position={Position.Bottom} style={HIDDEN_HANDLE} />
