@@ -306,7 +306,9 @@ def _parts(path: str) -> tuple[list[str], list[str]]:
 
 def _words(segment: str) -> list[str]:
     """A lowercased directory segment's words (``e2e-tests`` -> e2e, tests)."""
-    return [word for word in _SEGMENT_WORD_SEPARATORS.split(segment) if word]
+    if not segment:
+        return []
+    return list(filter(None, _SEGMENT_WORD_SEPARATORS.split(segment)))
 
 
 def _is_support_anywhere_dir(segment: str) -> bool:
