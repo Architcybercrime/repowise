@@ -104,7 +104,9 @@ its URI version (`enableVersioning`, `@Version`), then the `@Controller` prefix.
 axios, ky, got or ofetch instance is read with the instance's `baseURL` / `prefixUrl`, also when
 another file imports the instance. An Angular `HttpClient` call is read on any receiver typed
 or injected as `HttpClient`, with `environment.apiUrl` folded from `src/environments/` and class
-fields built on it; a base an interceptor prepends is not read. A client call
+fields built on it; a base an interceptor prepends is not read. A Node `request` call reads a URL
+or an options object held in a local (`var options = { uri, method }`), and a base from a
+`module.exports = { ... }` module it requires (`endpoints.cartsUrl`). A client call
 whose base URL is an unresolved placeholder (`fetch(\`${API_BASE}/users\`)`) matches
 on the host-relative path; the link is **exact** when exactly one workspace service
 provides that path (`unique_path`) and a lower-confidence **candidate** when the target
@@ -128,6 +130,8 @@ records `target_via` (the source) and `target_evidence` (the file).
 | `spring_application_name` | `application` / `bootstrap` `.yml` or `.properties` | `spring.application.name` | The module the file sits in |
 | `spring_base_path` | `.yml`, `.yaml`, `.properties` under `resources/`, `config/`, `configs/` or `shared/` | `server.servlet.context-path`, `server.context-path`, `spring.webflux.base-path`: a base path, not a name | A module's own `src/main/resources/application` or `bootstrap` file (not a profile file): that module. A config server's `<app>.yml`: the service named `<app>` |
 | `spring_gateway` | `application` / `bootstrap` in a module's resources, or a config-server file named `*gateway*`, `*zuul*`, `*proxy*`, `*edge*` (`.yml` or `.properties`) holding `routes` | Spring Cloud Gateway `routes[]` (`lb://name`, `http://host`) and Zuul `zuul.routes` | A gateway route (below) |
+| `dockerfile_env` | `Dockerfile`, `Dockerfile.*`, `*.Dockerfile` holding `ENV` | `ENV` keys whose value is an address (`CATALOGUE_HOST=catalogue`) | The host the value names |
+| `nginx` | `*.conf`, `*.conf.template`, `*.conf.tmpl` holding `proxy_pass` | Prefix `location` blocks with `proxy_pass` to a host, an `upstream` of one host, or an envsubst `${X_HOST}` in a template | A gateway route (below) |
 
 A base path prefixes every Spring route of its module before matching, so `@PostMapping("/users")`
 under `context-path: /uaa` is `POST /uaa/users`. A module given two different base paths gets
@@ -140,7 +144,8 @@ the host or base token to `service_bases`, which always wins.
 
 A gateway source states routes rather than names: a path prefix the gateway forwards to a
 service, and the path it forwards (Spring `StripPrefix`, `PrefixPath` and a
-`RewritePath=/x/?(?<s>.*), /y/${s}`; Zuul `stripPrefix`). The gateway is the repo holding
+`RewritePath=/x/?(?<s>.*), /y/${s}`; Zuul `stripPrefix`). An nginx `proxy_pass` with a path replaces the location prefix with that path; one
+without passes the request path unchanged. The nginx gateway is the repo holding the file. The gateway is the repo holding
 an `application` file in its module's own resources, or for a config server's `gateway.yml`
 the app its name spells. Each route is a `gateway_route` edge from the gateway to the
 service. A route whose forwarded path or target is not read (a Host or Method predicate,
