@@ -6,7 +6,7 @@
  * route a request takes. Pure, no React; the graph is already loaded.
  */
 
-import { addLink, emptySummary } from "./bands";
+import { addLink, compareIds, emptySummary } from "./bands";
 import { edgeFamily, type EdgeFamily } from "./edge-families";
 import type { LevelsEdge, LevelsGraph, LinkSummary } from "./level-types";
 
@@ -28,13 +28,13 @@ export interface BetweenResult {
   /** Direct links, by direction; null when there is none that way. */
   aToB: LinkSummary | null;
   bToA: LinkSummary | null;
-  /** Shortest paths each way, direct first, then through one service (strongest first). */
+  /** Shortest paths each way: the direct link when there is one, else up to `maxPaths` through one service (strongest first). */
   pathsAToB: ServicePath[];
   pathsBToA: ServicePath[];
 }
 
 export interface BetweenOptions {
-  /** Families walked for paths and counted as direct links. Default Runtime only. */
+  /** Families walked for paths and counted as direct links. Default Runtime only; the map passes its filter. */
   families?: ReadonlySet<EdgeFamily>;
   /** 1 = direct only, 2 = also through one other service. Default 2. */
   maxHops?: 1 | 2;
@@ -82,7 +82,7 @@ export function shortestPaths(
     // A path is as strong as its weakest hop.
     twoHop.push({ via, strength: Math.min(first.links, second.links), first, second });
   }
-  twoHop.sort((x, y) => y.strength - x.strength || (x.via < y.via ? -1 : x.via > y.via ? 1 : 0));
+  twoHop.sort((x, y) => y.strength - x.strength || compareIds(x.via, y.via));
   return twoHop.slice(0, maxPaths).map(({ via, first, second }) => ({
     nodes: [from, via, to],
     hops: [

@@ -7,7 +7,7 @@
  */
 
 import type { C4LayoutPosition } from "../../c4/layout/elk-c4-layout";
-import { addLink, bandId, emptySummary } from "./bands";
+import { addLink, bandId, compareIds, emptySummary } from "./bands";
 import { allocateSlots } from "./draw-budget";
 import { edgeFamily, type EdgeFamily } from "./edge-families";
 import type { DrawBudget, FocusColumnId, LevelsEdge, LevelsGraph, LinkSummary } from "./level-types";
@@ -63,7 +63,7 @@ function collect(into: Neighbours, key: string, edge: LevelsEdge): void {
 function ranked(neighbours: Neighbours, other: Neighbours): FocusEntry[] {
   return [...neighbours]
     .map(([serviceId, summary]) => ({ serviceId, summary, bothWays: other.has(serviceId) }))
-    .sort((x, y) => y.summary.links - x.summary.links || (x.serviceId < y.serviceId ? -1 : 1));
+    .sort((x, y) => y.summary.links - x.summary.links || compareIds(x.serviceId, y.serviceId));
 }
 
 /**
@@ -143,7 +143,7 @@ export function focusColumns(
     focus,
     hops,
     columns,
-    connectors: [...connectors.values()].sort((x, y) => (x.id < y.id ? -1 : 1)),
+    connectors: [...connectors.values()].sort((x, y) => compareIds(x.id, y.id)),
   };
 }
 

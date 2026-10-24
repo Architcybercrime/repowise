@@ -48,6 +48,13 @@ describe("allocateSlots", () => {
     expect(allocateSlots([{ size: 45, limit: 30 }, { size: 3 }], 119)).toEqual([30, 3]);
   });
 
+  it("hands slots the shared cap leaves over to containers still folding", () => {
+    // Cap 4 fits (4 + 4 + 2 = 10); the one spare slot goes to the first container.
+    expect(allocateSlots([{ size: 10 }, { size: 10 }], 11)).toEqual([5, 4]);
+    // The last slot of a container that then fits whole also frees its "+N more".
+    expect(allocateSlots([{ size: 3 }, { size: 10 }], 8)).toEqual([3, 4]);
+  });
+
   it("keeps nothing when even one +N more per container does not fit", () => {
     expect(allocateSlots([{ size: 5 }, { size: 5 }], 1)).toEqual([0, 0]);
     expect(allocateSlots([], 10)).toEqual([]);
@@ -90,7 +97,7 @@ describe("connectEdges", () => {
   const run = (edges: LevelsEdge[]) => connectEdges(edges, (id) => where[id] ?? null, (id) => cards.has(id));
 
   it("keeps card-to-card edges single and bands the rest per ordered pair", () => {
-    const r = run([
+    const edges = run([
       edge("a", "b", "http"),
       edge("a", "b", "event", 2),
       edge("a", "c", "http", 2),
@@ -99,15 +106,14 @@ describe("connectEdges", () => {
       edge("c", "d", "http", 4),
       edge("e", "z"),
     ]);
-    expect(r.edges.map((e) => e.id)).toEqual([
+    expect(edges.map((e) => e.id)).toEqual([
       "a->b:event",
       "a->b:http",
       "band:a>group:g",
       "band:group:g>a",
     ]);
-    const band = r.edges[2] as Extract<DrawnEdge, { type: "band" }>;
+    const band = edges[2] as Extract<DrawnEdge, { type: "band" }>;
     expect(band.summary).toEqual({ links: 3, edges: 2, kinds: { http: 2, grpc: 1 }, gatewayLinks: 0, edgeIds: ["a->c:http", "a->d:grpc"] });
-    expect(r.inside.get("group:g")?.links).toBe(4);
   });
 
   it("summarizes gateway-routed links", () => {

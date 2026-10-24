@@ -12,7 +12,7 @@
  * Pure, no React, deterministic.
  */
 
-import { connectEdges } from "./bands";
+import { compareIds, connectEdges } from "./bands";
 import { servicesBetween, type BetweenResult } from "./between";
 import { DRAW_BUDGET, capEdges, truncationReport } from "./draw-budget";
 import {
@@ -51,27 +51,45 @@ export interface LevelView {
   between: BetweenResult | null;
 }
 
-/** The drawn graph for a view state. */
+/**
+ * One node per id, edges only between known nodes, both in id order, so a
+ * payload with duplicates or dangling edges draws no phantom card and every
+ * summary lists its edge ids the same way whatever order the payload arrived
+ * in. The first of duplicate ids wins.
+ */
+export function normalizeGraph(graph: LevelsGraph): LevelsGraph {
+  const nodes = new Map<string, LevelsGraph["nodes"][number]>();
+  for (const n of graph.nodes) if (!nodes.has(n.id)) nodes.set(n.id, n);
+  const edges = new Map<string, LevelsGraph["edges"][number]>();
+  for (const e of graph.edges) {
+    if (nodes.has(e.source) && nodes.has(e.target) && !edges.has(e.id)) edges.set(e.id, e);
+  }
+  return {
+    ...graph,
+    nodes: [...nodes.values()].sort((x, y) => compareIds(x.id, y.id)),
+    edges: [...edges.values()].sort((x, y) => compareIds(x.id, y.id)),
+  };
+}
+
+/** The drawn graph for a view state. Exported helpers below it expect a normalized graph. */
 export function buildLevelView(
   graph: LevelsGraph,
   state: LevelViewState = {},
   budget: DrawBudget = DRAW_BUDGET,
 ): LevelView {
-  // Edges in id order, so every summary lists its edge ids the same way
-  // whatever order the payload arrived in.
-  graph = { ...graph, edges: [...graph.edges].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0)) };
+  graph = normalizeGraph(graph);
   const families = state.families ?? DEFAULT_EDGE_FAMILIES;
   const base = { families, familyCounts: familyCounts(graph.edges), focus: null, between: null };
   const visible = graph.edges.filter((e) => families.has(edgeFamily(e.kind)));
   const edgesById = new Map(graph.edges.map((e) => [e.id, e]));
 
   if (state.between) {
-    const between = servicesBetween(graph, state.between.a, state.between.b);
+    const between = servicesBetween(graph, state.between.a, state.between.b, { families });
     if (between) {
       const drawn = new Set([between.a, between.b]);
       for (const p of [...between.pathsAToB, ...between.pathsBToA]) p.nodes.forEach((id) => drawn.add(id));
       const order = [...drawn].sort();
-      const { edges } = connectEdges(visible, (id) => (drawn.has(id) ? id : null), () => true);
+      const edges = connectEdges(visible, (id) => (drawn.has(id) ? id : null), () => true);
       const capped = capEdges(edges, budget.edges, edgesById);
       return {
         ...base,

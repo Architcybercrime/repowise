@@ -8,7 +8,7 @@
  * filter, so a filter toggle changes only the connectors. Pure, no React.
  */
 
-import { connectEdges } from "./bands";
+import { compareIds, connectEdges } from "./bands";
 import { allocateSlots, capEdges, truncationReport, type BudgetContainer } from "./draw-budget";
 import { LINKED_FAMILIES, edgeFamily, linkWeight } from "./edge-families";
 import type {
@@ -40,8 +40,6 @@ function groupMoreId(groupId: string): string {
 }
 
 const TRAY_MORE_ID = "more:tray";
-
-const byId = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
  * Service id -> group id, for groups with two or more members, or null when
@@ -100,7 +98,7 @@ export function buildEstateView(
   const groupOf = activeGroups(graph);
   const weights = linkedWeights(graph.edges);
   const weight = (id: string) => weights.get(id) ?? 0;
-  const byRank = (a: string, b: string) => weight(b) - weight(a) || byId(a, b);
+  const byRank = (a: string, b: string) => weight(b) - weight(a) || compareIds(a, b);
 
   // Partition: group members, ungrouped linked services (root), ungrouped unlinked (tray).
   const members = new Map<string, string[]>();
@@ -119,7 +117,7 @@ export function buildEstateView(
   rootServices.sort(byRank);
   trayServices.sort(byRank);
   const groupWeight = new Map([...members].map(([g, ids]) => [g, ids.reduce((s, id) => s + weight(id), 0)]));
-  const groupIds = [...members.keys()].sort((a, b) => groupWeight.get(b)! - groupWeight.get(a)! || byId(a, b));
+  const groupIds = [...members.keys()].sort((a, b) => groupWeight.get(b)! - groupWeight.get(a)! || compareIds(a, b));
   const opened = new Set([...(state.open ?? [])].filter((g) => members.has(g)));
   const trayOpen = Boolean(state.openTray) && trayServices.length > 0;
 
@@ -177,7 +175,7 @@ export function buildEstateView(
   openGroups.forEach((g, i) => openFolded.set(g, fill(members.get(g)!, kept[i + 1]!, groupMoreId(g))));
   const trayFolded = trayOpen ? fill(trayServices, kept[kept.length - 1]!, TRAY_MORE_ID) : [];
 
-  const { edges } = connectEdges(visible, (id) => drawnAt.get(id) ?? null, (id) => cards.has(id));
+  const edges = connectEdges(visible, (id) => drawnAt.get(id) ?? null, (id) => cards.has(id));
   const capped = capEdges(edges, budget.edges, edgesById);
 
   // Group link counts come from the edges, not the drawing, so an open

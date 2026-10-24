@@ -269,6 +269,39 @@ describe("level precedence and determinism", () => {
     expect(buildLevelView(bigShuffled, { open: ["g2"] })).toEqual(buildLevelView(big, { open: ["g2"] }));
   });
 
+  it("drops dangling edges and duplicate ids instead of drawing phantoms", () => {
+    const dirty: LevelsGraph = {
+      nodes: [...ESHOP_GRAPH.nodes, ESHOP_GRAPH.nodes[0]!],
+      edges: [...ESHOP_GRAPH.edges, ESHOP_GRAPH.edges[2]!, { ...ESHOP_GRAPH.edges[2]!, id: "ghost", target: "gone" }],
+    };
+    expect(buildLevelView(dirty)).toEqual(buildLevelView(ESHOP_GRAPH));
+    const focus = buildLevelView(dirty, { focus: "basket.api" });
+    expect(focus.nodes.some((n) => n.type === "service" && n.serviceId === "gone")).toBe(false);
+  });
+
+  it("gives every drawn node and edge a unique id at every level", () => {
+    const g = groupedEstate(3, 20);
+    for (const view of [
+      buildLevelView(flatRing(300)),
+      buildLevelView(g, { open: ["g1"] }),
+      buildLevelView(ESHOP_GRAPH, { focus: "ordering.api", hops: 2 }),
+      buildLevelView(ESHOP_GRAPH, { openTray: true }),
+    ]) {
+      const ids = [...view.nodes, ...view.edges].map((x) => x.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it("counts a direct Data link between two services under the family filter", () => {
+    const g: LevelsGraph = {
+      nodes: ["a", "b"].map((id) => ({ id, name: id, repo: id })),
+      edges: [edge("a", "b", "db", 2)],
+    };
+    const view = buildLevelView(g, { between: { a: "a", b: "b" } });
+    expect(view.between?.aToB?.kinds).toEqual({ db: 2 });
+    expect(view.edges.map((e) => e.id)).toEqual(["a->b:db"]);
+  });
+
   it("reports the families drawn", () => {
     expect(buildLevelView(ESHOP_GRAPH).families).toBe(DEFAULT_EDGE_FAMILIES);
   });

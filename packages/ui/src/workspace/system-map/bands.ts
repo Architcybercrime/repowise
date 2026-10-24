@@ -30,42 +30,33 @@ export function summarizeLinks(edges: Iterable<LevelsEdge>): LinkSummary {
   return s;
 }
 
-export function bandId(source: string, target: string): string {
-  return `band:${source}>${target}`;
+/** Ascending code-unit order, the one id order every view sorts by. */
+export function compareIds(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
-export interface ConnectedEdges {
-  /** Drawn connectors, sorted by id. */
-  edges: DrawnEdge[];
-  /** Links whose two ends land on the same aggregate node, keyed by that node. */
-  inside: Map<string, LinkSummary>;
+export function bandId(source: string, target: string): string {
+  return `band:${source}>${target}`;
 }
 
 /**
  * Connect `edges` between drawn nodes. `drawnAt(serviceId)` names the node a
  * service is drawn as (or inside), null when it is not on the canvas;
  * `isServiceCard(drawnId)` is true when that node is the service's own card.
+ * Links whose two ends land on one node are not drawn. Sorted by id.
  */
 export function connectEdges(
   edges: Iterable<LevelsEdge>,
   drawnAt: (serviceId: string) => string | null,
   isServiceCard: (drawnId: string) => boolean,
-): ConnectedEdges {
+): DrawnEdge[] {
   const singles: DrawnEdge[] = [];
   const bands = new Map<string, DrawnBand>();
-  const inside = new Map<string, LinkSummary>();
   for (const e of edges) {
     const source = drawnAt(e.source);
     const target = drawnAt(e.target);
     if (source === null || target === null) continue;
-    if (source === target) {
-      // A self-edge on a card has nothing to draw; inside an aggregate it is an "inside" link.
-      if (isServiceCard(source)) continue;
-      let s = inside.get(source);
-      if (!s) inside.set(source, (s = emptySummary()));
-      addLink(s, e);
-      continue;
-    }
+    if (source === target) continue;
     if (isServiceCard(source) && isServiceCard(target)) {
       singles.push({ type: "edge", id: e.id, source, target, edgeId: e.id });
       continue;
@@ -76,6 +67,6 @@ export function connectEdges(
     addLink(band.summary, e);
   }
   const out = [...singles, ...bands.values()];
-  out.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
-  return { edges: out, inside };
+  out.sort((x, y) => compareIds(x.id, y.id));
+  return out;
 }

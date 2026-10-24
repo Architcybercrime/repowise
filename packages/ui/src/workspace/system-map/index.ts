@@ -102,6 +102,7 @@ export {
 } from "./edge-kinds";
 export {
   buildLevelView,
+  normalizeGraph,
   type LevelView,
 } from "./levels";
 export {
@@ -135,7 +136,7 @@ export {
   type PathHop,
   type ServicePath,
 } from "./between";
-export { connectEdges, summarizeLinks, bandId, type ConnectedEdges } from "./bands";
+export { connectEdges, summarizeLinks, bandId, compareIds } from "./bands";
 export { DRAW_BUDGET, allocateSlots, capEdges, truncationReport, type BudgetContainer } from "./draw-budget";
 export {
   EDGE_FAMILY_ORDER,

@@ -22,8 +22,10 @@ export interface BudgetContainer {
  * Items each container keeps so that kept items plus one "+N more" node per
  * folded container fit `capacity`. Water-filling: every container keeps up to
  * one shared cap, chosen as large as fits, so a small container is never
- * folded to make room for a big one. Deterministic. When even one "+N more"
- * per container does not fit, every container keeps nothing.
+ * folded to make room for a big one; slots the shared cap leaves over go to
+ * the first containers still folding. Deterministic. When even one "+N more"
+ * per container does not fit, every container keeps nothing and the view
+ * draws more than the budget (only reachable with more open groups than slots).
  */
 export function allocateSlots(containers: readonly BudgetContainer[], capacity: number): number[] {
   const keptAt = (cap: number) =>
@@ -38,7 +40,23 @@ export function allocateSlots(containers: readonly BudgetContainer[], capacity: 
     if (cost(mid) <= capacity) lo = mid;
     else hi = mid - 1;
   }
-  return keptAt(lo);
+  const kept = keptAt(lo);
+  let spare = Math.max(0, capacity - cost(lo));
+  containers.forEach((c, i) => {
+    const max = Math.min(c.size, c.limit ?? c.size);
+    const room = max - kept[i]!;
+    if (room <= 0) return;
+    // Filling a container whole also frees its "+N more" slot.
+    if (max === c.size && room <= spare + 1) {
+      kept[i] = max;
+      spare -= room - 1;
+    } else {
+      const give = Math.min(room, spare);
+      kept[i]! += give;
+      spare -= give;
+    }
+  });
+  return kept;
 }
 
 export interface CappedEdges {
