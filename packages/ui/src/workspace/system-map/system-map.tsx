@@ -31,17 +31,15 @@ import { scopeCaption } from "./scope-caption";
 import type { SystemMapRouteLoader } from "./search-index";
 import { shortcutHelpRows } from "./shortcuts";
 import { SystemMapActionsContext } from "./system-map-actions";
-import { SystemMapBreadcrumb } from "./system-map-breadcrumb";
 import { SystemMapCanvas } from "./system-map-canvas";
+import { mapChrome } from "./system-map-chrome";
 import type { SystemMapDrawerData } from "./system-map-drawer";
 import { SystemMapCanvasEmpty } from "./system-map-empty";
-import { SystemMapFilters } from "./system-map-filters";
 import { SystemMapFocusContext, createSystemMapFocusStore, type SystemMapFocusStore } from "./system-map-focus";
-import { SystemMapLegend, legendKeyFor } from "./system-map-legend";
+import { legendKeyFor } from "./system-map-legend";
 import { SystemMapList } from "./system-map-list";
 import { SystemMapNavActions } from "./system-map-nav-actions";
 import type { LoadLinksBetween } from "./routes-between";
-import { SystemMapBetweenControl } from "./system-map-between-control";
 import { railContent } from "./system-map-rail-content";
 import type { RepoHealth, SystemMapOverlay, SystemMapSelection } from "./types";
 import { useDropUndrawnAggregate, useMapLevel, type MapLevel } from "./use-map-level";
@@ -50,7 +48,7 @@ import { useMapInput, useRailVerbs } from "./use-map-verbs";
 import type { SystemMapPhase } from "./use-system-map-phases";
 import { useSystemMapSearch } from "./use-system-map-search";
 import { useSystemMapState, type SystemMapState } from "./use-system-map-state";
-import { TRAY_OPEN_TOKEN, toggleFamily, type MapViewState } from "./view-state";
+import { TRAY_OPEN_TOKEN, type MapViewState } from "./view-state";
 
 /** The canvas's height, shared with the host's loading placeholder so nothing reflows. */
 export const SYSTEM_MAP_CANVAS_HEIGHT = "h-[420px] sm:h-[clamp(460px,calc(100dvh-240px),800px)]";
@@ -189,32 +187,7 @@ function SystemMapInner(props: SystemMapProps) {
           verbs,
         })
       : null;
-  const betweenControl =
-    graph && levelView && graph.nodes.length > 1 ? (
-      <SystemMapBetweenControl
-        graph={graph}
-        families={levelView.families}
-        open={nav.picker.open}
-        onOpenChange={(open) => nav.setPicker(open ? { ...nav.picker, open } : { open: false })}
-        from={nav.picker.from}
-        onBetween={nav.onBetween}
-      />
-    ) : null;
-  const breadcrumb =
-    !listing && graph && levelView && levelView.level !== "estate" ? (
-      <SystemMapBreadcrumb graph={graph} level={levelView.level} view={view} onViewChange={setView} estateLabel={props.estateLabel} />
-    ) : undefined;
-  const banner = !listing && levelView ? (
-    <div className="flex min-w-0 flex-col gap-2">
-      <SystemMapFilters
-        familyCounts={levelView.familyCounts}
-        kindCounts={level.kindCounts}
-        families={levelView.families}
-        onToggleFamily={(f) => setView(toggleFamily(view, f))}
-      />
-      <SystemMapLegend {...legend} />
-    </div>
-  ) : undefined;
+  const { breadcrumb, banner, betweenControl } = mapChrome({ graph, level, view, setView, nav, legend, estateLabel: props.estateLabel });
   const empty = (
     <SystemMapCanvasEmpty
       error={props.error}
