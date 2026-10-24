@@ -47,8 +47,6 @@ export interface SystemMapLayout {
    * ids it can be handed only exist here.
    */
   viewGraph: SystemGraph | null;
-  /** True when the node count forced the grid fallback instead of ELK. */
-  simplified: boolean;
 }
 
 export function useSystemMapLayout({
@@ -62,7 +60,7 @@ export function useSystemMapLayout({
 
   // Laid out from the collapse state only. Toggling an edge-kind filter leaves
   // this identical, so the effect below sees the same signature and never
-  // re-runs ELK — the map holds still and the ~23ms main-thread cost is not paid.
+  // re-runs ELK — the map holds still and the layout is not paid again.
   const layoutGraph = useMemo(
     () => (graph ? applyCollapse(graph, view.collapsed) : null),
     [graph, view.collapsed],
@@ -72,19 +70,14 @@ export function useSystemMapLayout({
     [layoutGraph],
   );
 
-  const [layout, setLayout] = useState<{
-    positions: Map<string, { x: number; y: number }>;
-    simplified: boolean;
-  } | null>(null);
+  const [positions, setPositions] = useState<Map<string, { x: number; y: number }> | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Positions keyed by layout signature, so collapsing and un-collapsing is free
   // after the first pass in each direction. Dropped whenever a new graph arrives:
   // one graph has only the two collapse shapes, so holding entries for superseded
   // graphs would grow the map for refetches it can never serve again.
-  const cache = useRef(
-    new Map<string, { positions: Map<string, { x: number; y: number }>; simplified: boolean }>(),
-  );
+  const cache = useRef(new Map<string, Map<string, { x: number; y: number }>>());
   const cachedGraph = useRef(graph);
   if (cachedGraph.current !== graph) {
     cachedGraph.current = graph;
@@ -94,13 +87,13 @@ export function useSystemMapLayout({
   useEffect(() => {
     let cancelled = false;
     if (!layoutGraph || !signature || layoutGraph.nodes.length === 0) {
-      setLayout({ positions: new Map(), simplified: false });
+      setPositions(new Map());
       setLoading(false);
       return;
     }
     const cached = cache.current.get(signature);
     if (cached) {
-      setLayout(cached);
+      setPositions(cached);
       setLoading(false);
       return;
     }
@@ -108,7 +101,7 @@ export function useSystemMapLayout({
     computeSystemMapPositions(layoutGraph).then((result) => {
       cache.current.set(signature, result);
       if (!cancelled) {
-        setLayout(result);
+        setPositions(result);
         setLoading(false);
       }
     });
@@ -116,8 +109,6 @@ export function useSystemMapLayout({
       cancelled = true;
     };
   }, [layoutGraph, signature]);
-
-  const positions = layout?.positions ?? null;
 
   const nodes = useMemo<Node<SystemMapNodeData>[]>(() => {
     if (!viewGraph || !positions) return [];
@@ -152,5 +143,5 @@ export function useSystemMapLayout({
     }));
   }, [viewGraph, overlay]);
 
-  return { nodes, edges, loading, viewGraph, simplified: layout?.simplified ?? false };
+  return { nodes, edges, loading, viewGraph };
 }

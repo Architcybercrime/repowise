@@ -6,7 +6,6 @@ import {
   applyView,
   computeSystemMapPositions,
   layoutSignature,
-  SYSTEM_MAP_MAX_LAYOUT_NODES,
 } from "../../src/workspace/system-map/layout";
 import {
   edgeKindStyle,
@@ -563,23 +562,10 @@ describe("layout stability under filtering", () => {
 });
 
 describe("computeSystemMapPositions", () => {
-  it("lays out a normal graph with ELK and reports it is not simplified", async () => {
-    const result = await computeSystemMapPositions(
+  it("lays out a graph with ELK", async () => {
+    const positions = await computeSystemMapPositions(
       graph([node("api", "api"), node("web", "web")], [edge("web", "api")]),
     );
-    expect(result.simplified).toBe(false);
-    expect(result.positions.size).toBe(2);
-  });
-
-  it("falls back to a grid above the layout bound and says so", async () => {
-    const many = Array.from({ length: SYSTEM_MAP_MAX_LAYOUT_NODES + 1 }, (_, i) =>
-      node(`n${i}`, `r${i}`),
-    );
-    const result = await computeSystemMapPositions(graph(many, []));
-    expect(result.simplified).toBe(true);
-    expect(result.positions.size).toBe(many.length);
-    // A grid, not a pile: no two nodes share a position.
-    const seen = new Set([...result.positions.values()].map((p) => `${p.x},${p.y}`));
-    expect(seen.size).toBe(many.length);
+    expect(positions.size).toBe(2);
   });
 });

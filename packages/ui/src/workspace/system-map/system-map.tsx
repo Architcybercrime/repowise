@@ -38,7 +38,7 @@ import { SystemMapFocusContext, createSystemMapFocusStore } from "./system-map-f
 import { edgeKindStyle, isGatewayRouted } from "./edge-kinds";
 import { useSystemMapLayout } from "./use-system-map-layout";
 import { resolveViewSelection } from "./system-map-model";
-import { SYSTEM_MAP_MAX_LAYOUT_NODES, SYSTEM_MAP_NODE_SIZE, applyCollapse, type SystemMapView } from "./layout";
+import { SYSTEM_MAP_NODE_SIZE, applyCollapse, type SystemMapView } from "./layout";
 import type { RepoHealth, SystemMapOverlay, SystemMapSelection } from "./types";
 import { toFriendlyMessage } from "../../lib/errors";
 
@@ -131,7 +131,7 @@ function SystemMapInner({
   );
   const view = useMemo<SystemMapView>(() => ({ visibleKinds, collapsed }), [visibleKinds, collapsed]);
 
-  const { nodes, edges, loading: layoutLoading, viewGraph, simplified } = useSystemMapLayout({
+  const { nodes, edges, loading: layoutLoading, viewGraph } = useSystemMapLayout({
     graph,
     view,
     ...(healthByRepo ? { healthByRepo } : {}),
@@ -324,7 +324,7 @@ function SystemMapInner({
           </ReactFlow>
         </div>
 
-        {graph && viewGraph && <ScopeCaption graph={graph} viewGraph={viewGraph} collapsed={collapsed} lensed={Boolean(overlay)} hidden={hiddenKinds} kindCounts={kindCounts} simplified={simplified} />}
+        {graph && viewGraph && <ScopeCaption graph={graph} viewGraph={viewGraph} collapsed={collapsed} lensed={Boolean(overlay)} hidden={hiddenKinds} kindCounts={kindCounts} />}
 
         {graph && viewGraph && (
           <SystemMapDrawer
@@ -446,7 +446,6 @@ function ScopeCaption({
   lensed,
   hidden,
   kindCounts,
-  simplified,
 }: {
   graph: SystemGraph;
   viewGraph: SystemGraph;
@@ -454,7 +453,6 @@ function ScopeCaption({
   lensed: boolean;
   hidden: ReadonlySet<SystemEdgeKind>;
   kindCounts: ReadonlyMap<SystemEdgeKind, number>;
-  simplified: boolean;
 }) {
   const repoOf = new Map(graph.nodes.map((n) => [n.id, n.repo]));
   const intraRepo = graph.edges.filter((e) => repoOf.get(e.source) === repoOf.get(e.target)).length;
@@ -474,16 +472,7 @@ function ScopeCaption({
     "Placement follows structural dependencies; co-change lines do not move services.",
   ];
 
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="text-xs text-[var(--color-text-tertiary)]">{parts.filter(Boolean).join(" ")}</p>
-      {simplified && (
-        <p className="text-xs text-[var(--color-warning)]">
-          {`Layout simplified: above ${SYSTEM_MAP_MAX_LAYOUT_NODES} services the map falls back to a grid, so placement no longer reflects dependency direction.`}
-        </p>
-      )}
-    </div>
-  );
+  return <p className="text-xs text-[var(--color-text-tertiary)]">{parts.filter(Boolean).join(" ")}</p>;
 }
 
 /**
