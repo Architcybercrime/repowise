@@ -99,8 +99,5 @@ for (const services of SIZES) {
     bench("servicesBetween (runtime pair)", () => {
       servicesBetween(levels, caller, callee);
     });
-    bench("computeSystemMapPositions (ELK, grid past 500)", async () => {
-      await computeSystemMapPositions(graph);
-    }, SLOW);
   });
 }
