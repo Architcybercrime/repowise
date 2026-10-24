@@ -11,6 +11,13 @@ import { bench, describe } from "vitest";
 import type { SystemEdgeKind } from "@repowise-dev/types";
 import { applyView, computeSystemMapPositions, layoutSignature } from "../../src/workspace/system-map/layout";
 import { collapseToRepos } from "../../src/workspace/system-map/collapse";
+import { buildLevelView } from "../../src/workspace/system-map/levels";
+import {
+  orderByPrevious,
+  planLevelLayout,
+  planSignature,
+  scopeSignature,
+} from "../../src/workspace/system-map/layout-scopes";
 import { neighbourGroups, serviceResolver } from "../../src/workspace/system-map/system-map-model";
 import { makeSyntheticSystemGraph } from "./fixtures/synthetic-system-graph";
 
@@ -18,6 +25,8 @@ const SIZES = [30, 100, 300, 1000] as const;
 const RUNTIME_KINDS = new Set<SystemEdgeKind>(["http", "grpc", "socket", "event", "db"]);
 /** ELK runs for seconds at the top sizes; a few samples are enough there. */
 const SLOW = { iterations: 3, time: 0, warmupIterations: 1 } as const;
+/** ELK over the whole estate is skipped above this: the map only ever lays out drawn views (at most ~120 cards). */
+const ELK_MAX_SERVICES = 300;
 
 for (const services of SIZES) {
   const graph = makeSyntheticSystemGraph({
@@ -27,6 +36,14 @@ for (const services of SIZES) {
     seed: services,
   });
   const hub = graph.edges.find((e) => e.kind === "package")?.target ?? graph.nodes[0]!.id;
+  // The drawn view the layout plans from: the estate with its first group open when grouped.
+  const firstGroup = graph.nodes.find((n) => n.group)?.group;
+  const view = buildLevelView(graph, firstGroup ? { open: [firstGroup] } : {});
+  const plan = planLevelLayout(view.nodes, graph.edges);
+  // Previous positions in a shuffled-ish reading order, as after a relayout.
+  const previous = new Map(
+    plan.root.nodes.map((n, i) => [n.id, { x: (i * 7919) % 2000, y: (i * 104729) % 1500 }] as const),
+  );
 
   describe(`system map, ${services} services / ${graph.edges.length} edges`, () => {
     bench("applyView (runtime kinds)", () => {
@@ -43,8 +60,20 @@ for (const services of SIZES) {
       neighbourGroups(graph, hub, "in");
       neighbourGroups(graph, hub, "out");
     });
-    bench("computeSystemMapPositions (ELK, grid past 500)", async () => {
-      await computeSystemMapPositions(graph);
-    }, SLOW);
+    bench("planLevelLayout (drawn view, edges lifted to cards)", () => {
+      planLevelLayout(view.nodes, graph.edges);
+    });
+    bench("planSignature + scopeSignature (layout cache keys)", () => {
+      planSignature(plan);
+      for (const s of plan.interiors) scopeSignature(s);
+    });
+    bench("orderByPrevious (root scope)", () => {
+      orderByPrevious(plan.root.nodes, previous);
+    });
+    if (services <= ELK_MAX_SERVICES) {
+      bench("computeSystemMapPositions (ELK, whole estate)", async () => {
+        await computeSystemMapPositions(graph);
+      }, SLOW);
+    }
   });
 }
