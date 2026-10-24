@@ -49,77 +49,65 @@ export interface MapNavigation {
   onSearchPick: (hit: SearchHit) => void;
 }
 
-export function useMapNavigation(state: SystemMapState): MapNavigation {
-  const { view, setView, selection } = state;
-  const narrow = useNarrowViewport();
-  const display: MapDisplay = view.display ?? (narrow ? "list" : "map");
-  const [pendingFrom, setPendingFrom] = useState<string | null>(null);
-  const [help, setHelp] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
+/** Everything a shortcut can act on. */
+interface ShortcutContext {
+  view: MapViewState;
+  setView: (next: MapViewState) => void;
+  selection: SystemMapSelection;
+  clearSelection: () => void;
+  display: MapDisplay;
+  setDisplay: (display: MapDisplay) => void;
+  toMap: (next: MapViewState) => MapViewState;
+  help: boolean;
+  setHelp: Dispatch<SetStateAction<boolean>>;
+  pendingFrom: string | null;
+  setPendingFrom: (id: string | null) => void;
+  searchRef: RefObject<HTMLInputElement | null>;
+}
 
-  const toMap = useCallback((next: MapViewState) => (display === "list" ? withDisplay(next, "map") : next), [display]);
-  const setDisplay = useCallback((d: MapDisplay) => setView(withDisplay(view, d)), [setView, view]);
+/** Escape: the help, then a pending pick, then the selection, then one level up (on the map only). */
+function backOne(c: ShortcutContext): boolean {
+  if (c.help) c.setHelp(false);
+  else if (c.pendingFrom) c.setPendingFrom(null);
+  else if (c.selection) c.clearSelection();
+  else {
+    const up = c.display === "map" ? backOut(c.view) : null;
+    if (!up) return false;
+    c.setView(up);
+  }
+  return true;
+}
 
-  const setSelection = useCallback(
-    (next: SystemMapSelection) => {
-      if (pendingFrom && next?.type === "node" && next.id !== pendingFrom) {
-        setPendingFrom(null);
-        state.setSelection(null);
-        setView(toMap(compareServices(view, pendingFrom, next.id)));
-        return;
-      }
-      state.setSelection(next);
-    },
-    [pendingFrom, state, setView, view, toMap],
-  );
-
-  const onSearchPick = useCallback(
-    (hit: SearchHit) => {
-      setPendingFrom(null);
-      state.setSelection(null);
-      setView(toMap(pickToView(view, hit)));
-    },
-    [state, setView, view, toMap],
-  );
-
-  const node = selection?.type === "node" ? selection.id : null;
-  /** Escape: the help, then a pending pick, then the selection, then one level up (on the map). */
-  const back = (): boolean => {
-    if (help) setHelp(false);
-    else if (pendingFrom) setPendingFrom(null);
-    else if (selection) state.setSelection(null);
-    else {
-      const up = display === "map" ? backOut(view) : null;
-      if (!up) return false;
-      setView(up);
-    }
-    return true;
-  };
-  // Each returns whether it acted; a shortcut that did nothing leaves the key alone.
-  const handlers: Record<MapShortcut, () => boolean> = {
+/** What each shortcut does; each returns whether it acted, and a shortcut that did nothing leaves the key alone. */
+function shortcutHandlers(c: ShortcutContext): Record<MapShortcut, () => boolean> {
+  const node = c.selection?.type === "node" ? c.selection.id : null;
+  return {
     search: () => {
-      searchRef.current?.focus();
+      c.searchRef.current?.focus();
       return true;
     },
     help: () => {
-      setHelp((open) => !open);
+      c.setHelp((open) => !open);
       return true;
     },
     list: () => {
-      setDisplay(display === "list" ? "map" : "list");
+      c.setDisplay(c.display === "list" ? "map" : "list");
       return true;
     },
     focus: () => {
-      if (node) setView(toMap(focusService(view, node)));
+      if (node) c.setView(c.toMap(focusService(c.view, node)));
       return node !== null;
     },
     between: () => {
-      if (node) setPendingFrom(pendingFrom === node ? null : node);
+      if (node) c.setPendingFrom(c.pendingFrom === node ? null : node);
       return node !== null;
     },
-    back,
+    back: () => backOne(c),
   };
-  // Bound once; the listener reads the latest handlers through the ref.
+}
+
+/** Binds the shortcuts on the window once; the listener reads the latest handlers through a ref. */
+function useShortcutKeys(handlers: Record<MapShortcut, () => boolean>): void {
   const live = useRef(handlers);
   live.current = handlers;
   useEffect(() => {
@@ -135,6 +123,75 @@ export function useMapNavigation(state: SystemMapState): MapNavigation {
       release();
     };
   }, []);
+}
 
-  return { display, setDisplay, pendingFrom, setSelection, help, setHelp, searchRef, onSearchPick, back };
+/**
+ * The two-step Between pick: `b` holds a service, and the next service
+ * selected anywhere (canvas, list or rail) completes the comparison. Clearing
+ * the selection drops a pending pick.
+ */
+function useBetweenPick(state: SystemMapState, toMap: (next: MapViewState) => MapViewState) {
+  const { view, setView, selection } = state;
+  const [pendingFrom, setPendingFrom] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selection) setPendingFrom(null);
+  }, [selection]);
+  const setSelection = useCallback(
+    (next: SystemMapSelection) => {
+      if (!pendingFrom || next?.type !== "node" || next.id === pendingFrom) return state.setSelection(next);
+      setPendingFrom(null);
+      state.setSelection(null);
+      setView(toMap(compareServices(view, pendingFrom, next.id)));
+    },
+    [pendingFrom, state, setView, view, toMap],
+  );
+  return { pendingFrom, setPendingFrom, setSelection };
+}
+
+export function useMapNavigation(state: SystemMapState): MapNavigation {
+  const { view, setView } = state;
+  const narrow = useNarrowViewport();
+  const display: MapDisplay = view.display ?? (narrow ? "list" : "map");
+  const [help, setHelp] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const toMap = useCallback((next: MapViewState) => (display === "list" ? withDisplay(next, "map") : next), [display]);
+  const setDisplay = useCallback((d: MapDisplay) => setView(withDisplay(view, d)), [setView, view]);
+  const pick = useBetweenPick(state, toMap);
+
+  const onSearchPick = useCallback(
+    (hit: SearchHit) => {
+      state.setSelection(null);
+      setView(toMap(pickToView(view, hit)));
+    },
+    [state, setView, view, toMap],
+  );
+
+  const ctx: ShortcutContext = {
+    view,
+    setView,
+    selection: state.selection,
+    clearSelection: () => state.setSelection(null),
+    display,
+    setDisplay,
+    toMap,
+    help,
+    setHelp,
+    pendingFrom: pick.pendingFrom,
+    setPendingFrom: pick.setPendingFrom,
+    searchRef,
+  };
+  useShortcutKeys(shortcutHandlers(ctx));
+
+  return {
+    display,
+    setDisplay,
+    pendingFrom: pick.pendingFrom,
+    setSelection: pick.setSelection,
+    help,
+    setHelp,
+    searchRef,
+    onSearchPick,
+    back: () => backOne(ctx),
+  };
 }

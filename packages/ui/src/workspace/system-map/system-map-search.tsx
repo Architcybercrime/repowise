@@ -48,7 +48,7 @@ export function SystemMapSearch({ search, inputRef, copy, name }: SystemMapSearc
         role="combobox"
         aria-label={copy.searchLabel}
         aria-expanded={shown}
-        aria-controls={listId}
+        aria-controls={shown ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={shown && activeHit ? optionId(search.active) : undefined}
         placeholder={copy.searchPlaceholder}
@@ -61,48 +61,58 @@ export function SystemMapSearch({ search, inputRef, copy, name }: SystemMapSearc
         onKeyDown={search.onKeyDown}
         className="h-8 w-full rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] pl-7 pr-2 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
       />
-      {shown && (
-        <div
-          id={listId}
-          role="listbox"
-          aria-label={copy.searchLabel}
-          className="absolute right-0 top-full z-[var(--z-dropdown)] mt-1 max-h-80 w-full min-w-[16rem] overflow-y-auto rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] p-1 shadow-lg shadow-black/20"
-        >
-          {search.hits.length === 0 && (
-            <p className="px-2 py-1.5 text-xs text-[var(--color-text-secondary)]">
-              {search.routesLoading ? copy.searchRoutesLoading : copy.searchNone}
+      {shown && <SearchResults id={listId} optionId={optionId} search={search} copy={copy} name={name} />}
+    </div>
+  );
+}
+
+interface SearchResultsProps {
+  id: string;
+  optionId: (index: number) => string;
+  search: MapSearch;
+  copy: SystemMapNavCopy;
+  name: (serviceId: string) => string;
+}
+
+/** The listbox: hits grouped by section, each an option the arrows highlight. */
+function SearchResults({ id, optionId, search, copy, name }: SearchResultsProps) {
+  const status = search.hits.length === 0 ? (search.routesLoading ? copy.searchRoutesLoading : copy.searchNone) : null;
+  return (
+    <div
+      id={id}
+      role="listbox"
+      aria-label={copy.searchLabel}
+      className="absolute right-0 top-full z-[var(--z-dropdown)] mt-1 max-h-80 w-full min-w-[16rem] overflow-y-auto rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] p-1 shadow-lg shadow-black/20"
+    >
+      {status && <p className="px-2 py-1.5 text-xs text-[var(--color-text-secondary)]">{status}</p>}
+      {SECTIONS.map(({ kind, title }) => {
+        const rows = search.hits.map((hit, i) => ({ hit, i })).filter(({ hit }) => hit.kind === kind);
+        if (rows.length === 0) return null;
+        return (
+          <div key={kind} role="group" aria-label={title(copy)}>
+            <p aria-hidden className="px-2 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
+              {title(copy)}
             </p>
-          )}
-          {SECTIONS.map(({ kind, title }) => {
-            const rows = search.hits.map((hit, i) => ({ hit, i })).filter(({ hit }) => hit.kind === kind);
-            if (rows.length === 0) return null;
-            return (
-              <div key={kind} role="group" aria-label={title(copy)}>
-                <p aria-hidden className="px-2 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
-                  {title(copy)}
-                </p>
-                {rows.map(({ hit, i }) => (
-                  <div
-                    key={`${hit.kind}:${hit.id}`}
-                    id={optionId(i)}
-                    role="option"
-                    aria-selected={i === search.active}
-                    // Keeps focus in the input, so the pick does not blur and close the list first.
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => search.pick(hit)}
-                    className={`flex cursor-pointer flex-col rounded px-2 py-1 ${i === search.active ? "bg-[var(--color-bg-inset)]" : "hover:bg-[var(--color-bg-inset)]"}`}
-                  >
-                    <span className={`truncate text-xs text-[var(--color-text-primary)] ${hit.kind === "route" ? "font-mono" : ""}`}>{hit.label}</span>
-                    <span className="truncate text-[10px] text-[var(--color-text-secondary)]">{hitDetail(hit, copy, name)}</span>
-                  </div>
-                ))}
+            {rows.map(({ hit, i }) => (
+              <div
+                key={`${hit.kind}:${hit.id}`}
+                id={optionId(i)}
+                role="option"
+                aria-selected={i === search.active}
+                // Keeps focus in the input, so the pick does not blur and close the list first.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => search.pick(hit)}
+                className={`flex cursor-pointer flex-col rounded px-2 py-1 ${i === search.active ? "bg-[var(--color-bg-inset)]" : "hover:bg-[var(--color-bg-inset)]"}`}
+              >
+                <span className={`truncate text-xs text-[var(--color-text-primary)] ${hit.kind === "route" ? "font-mono" : ""}`}>{hit.label}</span>
+                <span className="truncate text-[10px] text-[var(--color-text-secondary)]">{hitDetail(hit, copy, name)}</span>
               </div>
-            );
-          })}
-          {search.hits.length > 0 && search.routesLoading && (
-            <p className="px-2 py-1 text-[10px] text-[var(--color-text-secondary)]">{copy.searchRoutesLoading}</p>
-          )}
-        </div>
+            ))}
+          </div>
+        );
+      })}
+      {!status && search.routesLoading && (
+        <p className="px-2 py-1 text-[10px] text-[var(--color-text-secondary)]">{copy.searchRoutesLoading}</p>
       )}
     </div>
   );

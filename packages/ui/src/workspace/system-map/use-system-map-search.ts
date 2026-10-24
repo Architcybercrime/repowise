@@ -39,7 +39,9 @@ function useRouteHits(graphIndex: ReturnType<typeof buildSearchIndex> | null, qu
   useEffect(() => {
     asked.current = query;
     if (!load || !graphIndex || query.length < SEARCH_MIN_CHARS) return;
-    load(query)
+    // Through a resolved promise, so a loader that throws synchronously still reads as no routes.
+    Promise.resolve()
+      .then(() => load(query))
       .then((links) => routeHits(links, graphIndex.resolve))
       .catch(() => [] as SearchHit[])
       .then((hits) => {
@@ -51,6 +53,12 @@ function useRouteHits(graphIndex: ReturnType<typeof buildSearchIndex> | null, qu
     hits: current ? state.hits : [],
     loading: Boolean(load) && query.length >= SEARCH_MIN_CHARS && !current,
   };
+}
+
+/** The highlighted result after an arrow key, wrapping at both ends. */
+function stepIndex(current: number, step: 1 | -1, count: number): number {
+  if (count === 0) return 0;
+  return (Math.min(current, count - 1) + step + count) % count;
 }
 
 export function useSystemMapSearch(
@@ -77,6 +85,7 @@ export function useSystemMapSearch(
     },
     [onPick, setQuery],
   );
+  const settled = query.trim() === debounced;
   const onKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Escape") {
@@ -84,20 +93,17 @@ export function useSystemMapSearch(
         e.preventDefault();
         if (query) setQuery("");
         else e.currentTarget.blur();
-        return;
-      }
-      if (hits.length === 0) return;
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        const step = e.key === "ArrowDown" ? 1 : -1;
-        setActive((i) => (Math.min(i, hits.length - 1) + step + hits.length) % hits.length);
+        setActive((i) => stepIndex(i, e.key === "ArrowDown" ? 1 : -1, hits.length));
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const hit = hits[Math.min(active, hits.length - 1)];
+        // Results still belong to the text before the last keystroke; wait for them.
+        const hit = settled ? hits[Math.min(active, hits.length - 1)] : undefined;
         if (hit) pick(hit);
       }
     },
-    [hits, active, pick, query, setQuery],
+    [hits, active, pick, query, setQuery, settled],
   );
 
   return {

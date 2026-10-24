@@ -3,8 +3,8 @@
  * help overlay prints. Modelled on the Architecture graph's
  * `useGraphKeyboardShortcuts`: `/` and Ctrl/Cmd+K search, Escape backs out,
  * `?` toggles help; the map adds `f` focus, `b` between and `l` list. Keys
- * typed into a field, or pressed with Alt or a modifier other than Ctrl/Cmd+K,
- * are not shortcuts. Pure, no React.
+ * typed into a field (Ctrl/Cmd+K aside), pressed inside a dialog, or with Alt
+ * or a modifier other than Ctrl/Cmd+K, are not shortcuts. Pure, no React.
  */
 
 import type { SystemMapNavCopy } from "./nav-copy";
@@ -40,14 +40,21 @@ function typing(target: EventTarget | null | undefined): boolean {
   return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable === true;
 }
 
+/** A key pressed inside a dialog (a sheet, a menu) belongs to that dialog, even when it does not mark it handled. */
+function inDialog(target: EventTarget | null | undefined): boolean {
+  const el = target as HTMLElement | null | undefined;
+  return typeof el?.closest === "function" && el.closest('[role="dialog"],[role="alertdialog"]') !== null;
+}
+
 /**
  * The shortcut a key press asks for, or null. A press something else already
  * handled (the canvas's own Escape, a dialog) is left alone.
  */
 export function shortcutFor(e: ShortcutKey): MapShortcut | null {
-  if (e.defaultPrevented || typing(e.target) || e.altKey) return null;
+  if (e.defaultPrevented || e.altKey || inDialog(e.target)) return null;
+  // Ctrl/Cmd+K works from any field: the map holds the shortcut while it is on screen.
   if (e.ctrlKey || e.metaKey) return e.key === "k" || e.key === "K" ? "search" : null;
-  return PLAIN[e.key] ?? null;
+  return typing(e.target) ? null : (PLAIN[e.key] ?? null);
 }
 
 /** The help overlay's rows, in reading order. */

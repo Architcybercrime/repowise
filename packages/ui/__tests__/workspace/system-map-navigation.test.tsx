@@ -191,6 +191,12 @@ describe("shortcut keys", () => {
     expect(shortcutFor({ key: "f", altKey: true })).toBeNull();
     expect(shortcutFor({ key: "Escape", defaultPrevented: true })).toBeNull();
     expect(shortcutFor({ key: "f", target: document.createElement("input") })).toBeNull();
+    // Ctrl+K reaches the map from any field; nothing reaches it from inside a dialog.
+    expect(shortcutFor({ key: "k", ctrlKey: true, target: document.createElement("input") })).toBe("search");
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const inside = dialog.appendChild(document.createElement("button"));
+    expect(shortcutFor({ key: "Escape", target: inside })).toBeNull();
   });
 });
 
@@ -230,14 +236,20 @@ describe("shortcuts on the map", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Pick a second service to compare with webapp");
   });
 
-  it("l shows the list and Escape steps back out of a level", () => {
+  it("l shows the list; Escape steps back out of a level on the map but not in the list", () => {
     const onViewChange = vi.fn();
     const focused = { ...ESTATE_VIEW, focus: "webapp" };
-    render(<SystemMap graph={flat} view={focused} onViewChange={onViewChange} />);
-    press("l");
-    expect(onViewChange).toHaveBeenLastCalledWith({ ...focused, display: "list" });
+    const { rerender } = render(<SystemMap graph={flat} view={focused} onViewChange={onViewChange} />);
     press("Escape");
     expect(onViewChange).toHaveBeenLastCalledWith({ ...ESTATE_VIEW });
+    press("l");
+    expect(onViewChange).toHaveBeenLastCalledWith({ ...focused, display: "list" });
+    onViewChange.mockClear();
+    rerender(<SystemMap graph={flat} view={{ ...focused, display: "list" }} onViewChange={onViewChange} />);
+    press("Escape");
+    expect(onViewChange).not.toHaveBeenCalled();
+    press("l");
+    expect(onViewChange).toHaveBeenLastCalledWith({ ...focused, display: "map" });
   });
 
   it("? opens the shortcut help, and Escape closes it before anything else", () => {
@@ -253,7 +265,7 @@ describe("shortcuts on the map", () => {
 });
 
 describe("between pick", () => {
-  it("completes on the second service selected anywhere on the map", () => {
+  it("completes on the second service picked in the list, and opens the map", () => {
     const onViewChange = vi.fn();
     const onSelectionChange = vi.fn();
     const view = { ...ESTATE_VIEW, display: "list" as const };

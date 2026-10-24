@@ -94,18 +94,18 @@ function value(row: ServiceRow, key: ServiceSortKey): string | number | null {
 
 /** Rows in the given order; ties and missing values fall back to the name, so the order is stable. */
 export function sortServiceRows(rows: readonly ServiceRow[], sort: ServiceSort): ServiceRow[] {
-  const dir = sort.order === "asc" ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    const va = value(a, sort.key);
-    const vb = value(b, sort.key);
-    if (va !== vb) {
-      if (va === null) return 1;
-      if (vb === null) return -1;
-      const c = typeof va === "number" && typeof vb === "number" ? va - vb : text(String(va), String(vb));
-      if (c !== 0) return c * dir;
-    }
-    return text(a.name, b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  });
+  const dir: 1 | -1 = sort.order === "asc" ? 1 : -1;
+  return [...rows].sort(
+    (a, b) => compareValues(value(a, sort.key), value(b, sort.key), dir) || text(a.name, b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+}
+
+/** Two column values in `dir` order; a missing value goes last whichever way. */
+function compareValues(va: string | number | null, vb: string | number | null, dir: 1 | -1): number {
+  if (va === vb) return 0;
+  if (va === null) return 1;
+  if (vb === null) return -1;
+  return (typeof va === "number" && typeof vb === "number" ? va - vb : text(String(va), String(vb))) * dir;
 }
 
 /** A header click: the same column flips; a new one starts A to Z for words and largest first for figures. */

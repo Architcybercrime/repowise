@@ -191,6 +191,7 @@ function SystemMapInner(props: SystemMapProps) {
   const legend = useMemo(() => legendKeyFor(levelView?.edges ?? [], edgesById), [levelView, edgesById]);
 
   const hasGraph = Boolean(graph && graph.nodes.length > 0);
+  const showCaption = !listing && hasGraph && caption.length > 0;
   const rail =
     graph && levelView
       ? railContent({
@@ -246,7 +247,7 @@ function SystemMapInner(props: SystemMapProps) {
           }
           banner={banner}
           rail={rail}
-          footer={!listing && hasGraph && caption.length > 0 ? <p className="text-xs text-[var(--color-text-secondary)]">{caption.join(" ")}</p> : undefined}
+          footer={showCaption ? <p className="text-xs text-[var(--color-text-secondary)]">{caption.join(" ")}</p> : undefined}
         >
           <div className="relative min-w-0">
             {listing && graph ? (
