@@ -176,6 +176,27 @@ describe("search on the map", () => {
   });
 });
 
+describe("a route pick and the routes panel", () => {
+  it("opens Between for the route's caller and provider with the routes panel filtered to the route", async () => {
+    const load = vi.fn(async () => [
+      { contract_id: "GET /orders", contract_type: "http", provider_repo: "ordering.api", provider_file: "a", consumer_repo: "webapp", consumer_file: "b" },
+    ]);
+    const loadLinksBetween = vi.fn(async (a: string, b: string) => ({ a, b, links: [], total: 0, totals: [] }));
+    let view: MapViewState = ESTATE_VIEW;
+    const onViewChange = (next: MapViewState) => {
+      view = next;
+    };
+    const { rerender } = render(
+      <SystemMap graph={flat} view={view} onViewChange={onViewChange} loadRoutes={load} loadLinksBetween={loadLinksBetween} />,
+    );
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "orders" } });
+    fireEvent.click(await screen.findByRole("option", { name: /GET \/orders/ }));
+    expect(view.between).toEqual({ a: "webapp", b: "ordering.api" });
+    rerender(<SystemMap graph={flat} view={view} onViewChange={onViewChange} loadRoutes={load} loadLinksBetween={loadLinksBetween} />);
+    expect(await screen.findByRole("searchbox", { name: "Filter routes" })).toHaveValue("GET /orders");
+  });
+});
+
 describe("shortcut keys", () => {
   it("maps each key, and leaves typing and handled keys alone", () => {
     expect(shortcutFor({ key: "/" })).toBe("search");
@@ -230,10 +251,20 @@ describe("shortcuts on the map", () => {
     expect(onViewChange).not.toHaveBeenCalled();
   });
 
-  it("b starts a comparison and says so", () => {
-    render(<SystemMap graph={flat} selection={{ type: "node", id: "webapp" }} onSelectionChange={() => {}} />);
+  it("b opens the Between picker from the selected service and says so; Escape drops the pick, then the picker", () => {
+    const onSelectionChange = vi.fn();
+    render(<SystemMap graph={flat} selection={{ type: "node", id: "webapp" }} onSelectionChange={onSelectionChange} />);
     press("b");
     expect(screen.getByRole("status")).toHaveTextContent("Pick a second service to compare with webapp");
+    expect(screen.getByPlaceholderText("From service...")).toHaveValue("webapp");
+    press("Escape");
+    expect(screen.getByRole("status")).not.toHaveTextContent("Pick a second service");
+    expect(screen.getByPlaceholderText("From service...")).toBeInTheDocument();
+    press("Escape");
+    expect(screen.queryByPlaceholderText("From service...")).toBeNull();
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    press("Escape");
+    expect(onSelectionChange).toHaveBeenLastCalledWith(null);
   });
 
   it("l shows the list; Escape steps back out of a level on the map but not in the list", () => {

@@ -68,7 +68,7 @@ export const DEFAULT_NAV_COPY: SystemMapNavCopy = {
   keySearch: "Search services, groups and routes",
   keyBack: "Close details, then go back a level",
   keyFocus: "Focus the selected service",
-  keyBetween: "Compare the selected service with the next one you pick",
+  keyBetween: "Compare two services, starting from the selected one",
   keyList: "Switch between the map and the list",
   keyHelp: "Show or hide this help",
   keySteps: "Step through search results",

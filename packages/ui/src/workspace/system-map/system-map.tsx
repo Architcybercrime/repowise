@@ -11,10 +11,11 @@
  * Built on `GraphCanvasShell`: the lens and extra actions in the title row,
  * the family chips and key above the canvas, the caption under it, and the
  * details in the rail, a grid peer of the canvas (a bottom sheet on phones).
- * The host supplies data and routes through props only; it may control the
- * level state and the selection to keep them in its URL. Search, the
- * Map | List switch, keyboard shortcuts and a live line announcing each level
- * change come from `use-map-navigation.ts`.
+ * The host supplies data, routes and the links loader through props only; it
+ * may control the level state and the selection to keep them in its URL.
+ * Search, the Map | List switch, keyboard shortcuts, comparing two services
+ * and a live line announcing each level change come from
+ * `use-map-navigation.ts`; card and rail verbs from `use-map-verbs.ts`.
  */
 
 import { useCallback, useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
@@ -22,15 +23,14 @@ import { ReactFlowProvider } from "@xyflow/react";
 import type { NodeArchitectureRole, SystemGraph } from "@repowise-dev/types";
 import { GraphCanvasShell } from "../../graph/graph-canvas-shell";
 import { GraphShortcutHelp } from "../../graph/graph-shortcut-help";
+import type { ActivateTrigger } from "./activate";
 import { levelAnnouncement } from "./announce";
-import { activateEdge, activateNode, type Activation, type ActivateTrigger } from "./activate";
 import { toFlowElements, type FlowElements } from "./flow-elements";
-import type { LevelView } from "./levels";
 import { navCopyWith, type SystemMapNavCopy } from "./nav-copy";
 import { scopeCaption } from "./scope-caption";
 import type { SystemMapRouteLoader } from "./search-index";
 import { shortcutHelpRows } from "./shortcuts";
-import { SystemMapActionsContext, type SystemMapActions } from "./system-map-actions";
+import { SystemMapActionsContext } from "./system-map-actions";
 import { SystemMapBreadcrumb } from "./system-map-breadcrumb";
 import { SystemMapCanvas } from "./system-map-canvas";
 import type { SystemMapDrawerData } from "./system-map-drawer";
@@ -40,14 +40,17 @@ import { SystemMapFocusContext, createSystemMapFocusStore, type SystemMapFocusSt
 import { SystemMapLegend, legendKeyFor } from "./system-map-legend";
 import { SystemMapList } from "./system-map-list";
 import { SystemMapNavActions } from "./system-map-nav-actions";
+import type { LoadLinksBetween } from "./routes-between";
+import { SystemMapBetweenControl } from "./system-map-between-control";
 import { railContent } from "./system-map-rail-content";
 import type { RepoHealth, SystemMapOverlay, SystemMapSelection } from "./types";
 import { useDropUndrawnAggregate, useMapLevel, type MapLevel } from "./use-map-level";
 import { useMapNavigation, type MapNavigation } from "./use-map-navigation";
+import { useMapInput, useRailVerbs } from "./use-map-verbs";
 import type { SystemMapPhase } from "./use-system-map-phases";
 import { useSystemMapSearch } from "./use-system-map-search";
 import { useSystemMapState, type SystemMapState } from "./use-system-map-state";
-import { TRAY_OPEN_TOKEN, closeContainer, openContainer, toggleFamily, type MapViewState } from "./view-state";
+import { TRAY_OPEN_TOKEN, toggleFamily, type MapViewState } from "./view-state";
 
 /** The canvas's height, shared with the host's loading placeholder so nothing reflows. */
 export const SYSTEM_MAP_CANVAS_HEIGHT = "h-[420px] sm:h-[clamp(460px,calc(100dvh-240px),800px)]";
@@ -64,6 +67,8 @@ export interface SystemMapProps {
   overlay?: SystemMapOverlay;
   /** Per-service architecture role, named on cards and in the rail (optional). */
   roleByNodeId?: ReadonlyMap<string, NodeArchitectureRole>;
+  /** The section heading, in the title row beside the lens. */
+  title?: string;
   /** The lens control, in the title row. */
   toolbar?: ReactNode;
   /** More title-row controls after the lens (search, a between picker). */
@@ -76,8 +81,12 @@ export interface SystemMapProps {
   /** Controlled level state (`open`, `focus`, `a`/`b`, `kinds` in a URL). */
   view?: MapViewState;
   onViewChange?: (view: MapViewState) => void;
-  /** Rail content for the current level when nothing is selected, e.g. the routes between two services. */
-  levelRail?: ReactNode;
+  /**
+   * One page of routes between two services (`GET /api/workspace/system-graph/links`).
+   * The Between level lists them in the rail and a relationship shows its own;
+   * without it both say route detail is not available.
+   */
+  loadLinksBetween?: LoadLinksBetween;
   /** Lists what a "+N more" card folded; the card offers it only when present. */
   onShowFolded?: (serviceIds: readonly string[]) => void;
   /** The breadcrumb's root, e.g. the workspace name. */
@@ -109,37 +118,6 @@ function useFocusStore(level: MapLevel) {
     focus.setSelected({ node: kind === "node" ? drawnId : null, edge: kind === "edge" ? drawnId : null });
   }, [focus, kind, drawnId]);
   return { focus, canvasRef };
-}
-
-/** Card verbs and the canvas's activate handler, over the level state and the selection. */
-function useMapInput(levelView: LevelView | null, state: SystemMapState, onShowFolded: SystemMapProps["onShowFolded"]) {
-  const { view, setView, setSelection } = state;
-  const actions = useMemo<SystemMapActions>(
-    () => ({
-      openContainer: (id) => setView(openContainer(view, id)),
-      closeContainer: (id) => setView(closeContainer(view, id)),
-      showFolded: onShowFolded,
-    }),
-    [setView, view, onShowFolded],
-  );
-  const apply = useCallback(
-    (a: Activation) => {
-      if (a?.kind === "select") setSelection(a.selection);
-      else if (a?.kind === "open") actions.openContainer(a.id);
-      else if (a?.kind === "folded") actions.showFolded?.(a.serviceIds);
-    },
-    [setSelection, actions],
-  );
-  const onActivate = useCallback(
-    (id: string, kind: "node" | "edge", trigger: ActivateTrigger) =>
-      apply(
-        kind === "edge"
-          ? activateEdge(levelView?.edges.find((e) => e.id === id))
-          : activateNode(levelView?.nodes.find((n) => n.id === id), trigger),
-      ),
-    [apply, levelView],
-  );
-  return { actions, onActivate };
 }
 
 /** What the live region says: the level, the display, or a pending Between pick. */
@@ -174,6 +152,7 @@ function SystemMapInner(props: SystemMapProps) {
   const { nodesById, edgesById, levelView, layout } = level;
   const { focus, canvasRef } = useFocusStore(level);
   const input = useMapInput(levelView, state, props.onShowFolded);
+  const verbs = useRailVerbs(state, nav);
   const search = useSystemMapSearch(graph, nav.onSearchPick, props.loadRoutes);
   const announcement = useAnnouncement(graph, level, view, nav, copy);
   const listing = nav.display === "list";
@@ -192,7 +171,7 @@ function SystemMapInner(props: SystemMapProps) {
 
   const hasGraph = Boolean(graph && graph.nodes.length > 0);
   const showCaption = !listing && hasGraph && caption.length > 0;
-  const rail =
+  const railNode =
     graph && levelView
       ? railContent({
           graph,
@@ -203,11 +182,24 @@ function SystemMapInner(props: SystemMapProps) {
           healthByRepo,
           roleByNodeId,
           drawer: props.drawer,
-          levelRail: props.levelRail,
+          loadLinksBetween: props.loadLinksBetween,
+          routeFilter: nav.routeFilter,
           onSelect: setSelection,
           onOpenGroup: input.actions.openContainer,
+          verbs,
         })
       : null;
+  const betweenControl =
+    graph && levelView && graph.nodes.length > 1 ? (
+      <SystemMapBetweenControl
+        graph={graph}
+        families={levelView.families}
+        open={nav.picker.open}
+        onOpenChange={(open) => nav.setPicker(open ? { ...nav.picker, open } : { open: false })}
+        from={nav.picker.from}
+        onBetween={nav.onBetween}
+      />
+    ) : null;
   const breadcrumb =
     !listing && graph && levelView && levelView.level !== "estate" ? (
       <SystemMapBreadcrumb graph={graph} level={levelView.level} view={view} onViewChange={setView} estateLabel={props.estateLabel} />
@@ -238,15 +230,17 @@ function SystemMapInner(props: SystemMapProps) {
         <GraphCanvasShell
           variant="section"
           breadcrumb={breadcrumb}
+          title={props.title}
           titleActions={
             <>
               {toolbar}
               {extraActions}
+              {betweenControl}
               <SystemMapNavActions nav={nav} search={search} copy={copy} name={name} />
             </>
           }
           banner={banner}
-          rail={rail}
+          rail={railNode}
           footer={showCaption ? <p className="text-xs text-[var(--color-text-secondary)]">{caption.join(" ")}</p> : undefined}
         >
           <div className="relative min-w-0">

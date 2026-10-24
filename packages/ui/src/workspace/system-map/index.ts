@@ -122,7 +122,6 @@ export {
   serviceResolver,
   summarizeServiceContracts,
   serviceDiagnostics,
-  edgeLinks,
   edgeSentence,
   weightLabel,
   weightShort,
@@ -203,6 +202,22 @@ export {
   type PathHop,
   type ServicePath,
 } from "./between";
+export { matchServices, pickerPath, resolveService } from "./between-picker";
+export { focusColumnLabels, FOCUS_COLUMN_TITLES, type FocusColumnLabel } from "./focus-labels";
+export {
+  ROUTES_PAGE,
+  planRoutes,
+  routesLede,
+  hiddenRoutesSentence,
+  type LinksBetweenOptions,
+  type LoadLinksBetween,
+  type RoutesPlan,
+} from "./routes-between";
+export { SystemMapRoutesPanel, type SystemMapRoutesPanelProps } from "./system-map-routes-panel";
+export { SystemMapBetweenControl, type SystemMapBetweenControlProps } from "./system-map-between-control";
+export { RouteRow } from "./system-map-route-row";
+export { buildPairAiPrompt, type BuildPairPromptOptions } from "./system-map-pair-prompt";
+export { useRoutesBetween, useEdgeRoutes, type RoutesBetweenState, type EdgeRoutes } from "./use-routes-between";
 export { connectEdges, summarizeLinks, bandId, compareIds } from "./bands";
 export { DRAW_BUDGET, allocateSlots, capEdges, truncationReport, type BudgetContainer } from "./draw-budget";
 export {
@@ -214,9 +229,11 @@ export {
   edgeFamily,
   edgeFamilyOf,
   familyCounts,
+  familyTally,
   linkWeight,
   type EdgeFamily,
   type FamilyCount,
+  type FamilyTally,
 } from "./edge-families";
 export type {
   DrawBudget,
