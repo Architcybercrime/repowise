@@ -38,7 +38,8 @@ function groupedEstate(groups: number, size: number): LevelsGraph {
     }
     if (g + 1 < groups) edges.push(edge(`g${g}.s1`, `g${g + 1}.s0`, "event"));
   }
-  return { nodes, edges };
+  // The model draws groups only when the payload lists them.
+  return { nodes, edges, groups: Array.from({ length: groups }, (_, g) => ({ id: `g${g}` })) };
 }
 
 /** Counts cache traffic, so a test can tell a cache hit from an ELK run. */
