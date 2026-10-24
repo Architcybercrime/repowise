@@ -1202,8 +1202,69 @@ class TestGetSystemGraph:
         kinds = {(e["source"], e["target"], e["kind"]) for e in data["edges"]}
         assert ("frontend", "backend", "http") in kinds  # consumer -> provider
         assert ("frontend", "backend", "package") in kinds  # dependent -> dependency
+        assert {(e["kind"], e["family"]) for e in data["edges"]} == {
+            ("http", "runtime"),
+            ("package", "build"),
+        }
+        assert data["groups"] == []  # two services: too few to group
+        assert {n["group"] for n in data["nodes"]} == {None}
         assert "diagnostics" in data
         assert all("contract_refs" in e and "ref_count" not in e for e in data["edges"])
+
+    @pytest.mark.asyncio
+    async def test_fills_family_on_an_older_artifact(self, tmp_path: Path) -> None:
+        _make_system_graph_enricher(tmp_path)
+        path = tmp_path / "system_graph.json"
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        for edge in raw["edges"]:
+            del edge["family"]
+        _write_json(path, raw)
+        enricher = CrossRepoEnricher(tmp_path / "cross_repo_edges.json", system_graph_path=path)
+        app = _make_workspace_app(ws_config=_make_ws_config(), enricher=enricher)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            data = (await c.get("/api/workspace/system-graph")).json()
+        assert {(e["kind"], e["family"]) for e in data["edges"]} == {
+            ("http", "runtime"),
+            ("package", "build"),
+        }
+
+    @pytest.mark.asyncio
+    async def test_returns_service_groups(self, tmp_path: Path) -> None:
+        from repowise.core.workspace.contracts import Contract
+        from repowise.core.workspace.cross_repo import CrossRepoOverlay
+        from repowise.core.workspace.system_graph import build_system_graph
+
+        repos = [f"{fam}-{i}" for fam in ("billing", "search", "misc") for i in range(15)]
+        contracts = [
+            Contract(
+                repo=r,
+                contract_id=f"http::GET::/{r}",
+                contract_type="http",
+                role="provider",
+                file_path="h.py",
+                symbol_name="h",
+                confidence=0.9,
+            )
+            for r in repos
+        ]
+        graph = build_system_graph(contracts, [], CrossRepoOverlay(), {})
+        _write_json(tmp_path / "system_graph.json", graph.to_dict())
+        enricher = CrossRepoEnricher(
+            tmp_path / "cross_repo_edges.json", system_graph_path=tmp_path / "system_graph.json"
+        )
+        app = _make_workspace_app(ws_config=_make_ws_config(), enricher=enricher)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            data = (await c.get("/api/workspace/system-graph")).json()
+        assert [g["id"] for g in data["groups"]] == ["name:billing", "name:misc", "name:search"]
+        assert data["groups"][0] == {
+            "id": "name:billing",
+            "label": "billing",
+            "source": "name",
+            "member_count": 15,
+        }
+        assert {n["group"] for n in data["nodes"] if n["repo"].startswith("search")} == {
+            "name:search"
+        }
 
     @pytest.mark.asyncio
     async def test_map_view_is_lean(self, tmp_path: Path) -> None:
@@ -1221,6 +1282,8 @@ class TestGetSystemGraph:
         http = next(e for e in lean["edges"] if e["kind"] == "http")
         assert http["contract_refs"] is None
         assert http["ref_count"] == 1
+        assert lean["groups"] == full["groups"]
+        assert all("family" in e for e in lean["edges"])
 
     @pytest.mark.asyncio
     async def test_map_view_empty_when_no_graph(self) -> None:
@@ -1230,7 +1293,7 @@ class TestGetSystemGraph:
             resp = await c.get("/api/workspace/system-graph", params={"view": "map"})
             bad = await c.get("/api/workspace/system-graph", params={"view": "nope"})
         assert resp.status_code == 200
-        assert resp.json() == {"version": 1, "generated_at": "", "nodes": [], "edges": []}
+        assert resp.json() == {"version": 1, "generated_at": "", "nodes": [], "edges": [], "groups": []}
         assert bad.status_code == 422
 
 

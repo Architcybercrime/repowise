@@ -4816,6 +4816,21 @@ export interface WorkspaceImpactedNode {
   edge_kinds?: string[];
 }
 
+/**
+ * Links between two services, read from ``system_graph.json``, ``contracts.json``
+ * and ``cross_repo_edges.json``. The three are written together by one
+ * workspace update; ``stale_graph`` is true when the graph and the contracts
+ * record different repo heads, and rows may then be missing.
+ */
+export interface WorkspaceLinksBetweenResponse {
+  a: string;
+  b: string;
+  stale_graph?: boolean;
+  links: WorkspaceServiceLinkEntry[];
+  total: number;
+  totals: WorkspaceServiceLinksTotal[];
+}
+
 export interface WorkspaceNodeArchitectureRole {
   id: string;
   repo?: string;
@@ -4844,6 +4859,19 @@ export interface WorkspaceOrphanProvider {
   contract_id: string;
   contract_type: string;
   other_files?: string[];
+}
+
+/** One manifest dependency of one repo on another, as ``cross_repo_edges.json`` stores it. */
+export interface WorkspacePackageDepEntry {
+  source_repo: string;
+  source_manifest?: string;
+  target_repo: string;
+  target_package?: string;
+  kind?: string;
+  target_manifest?: string;
+  requested_version?: string | null;
+  scope?: string;
+  resolution_basis?: string;
 }
 
 export interface WorkspaceRepoActions {
@@ -4913,6 +4941,35 @@ export interface WorkspaceSchemaCoverage {
   recovered_ratio_eligible?: number | null;
 }
 
+export interface WorkspaceServiceGroup {
+  id: string;
+  label: string;
+  source: string;
+  member_count?: number;
+}
+
+/**
+ * One piece of evidence behind an edge between two services.
+ *
+ * ``evidence`` says which of ``link``, ``package_dep`` or ``co_change`` is set.
+ */
+export interface WorkspaceServiceLinkEntry {
+  kind: string;
+  direction: "a_to_b" | "b_to_a" | "both";
+  evidence: "contract" | "package" | "co_change";
+  link?: WorkspaceContractLinkEntry | null;
+  provider_origin?: string | null;
+  consumer_origin?: string | null;
+  package_dep?: WorkspacePackageDepEntry | null;
+  co_change?: WorkspaceCoChangeEntry | null;
+}
+
+export interface WorkspaceServiceLinksTotal {
+  kind: string;
+  direction: "a_to_b" | "b_to_a" | "both";
+  count: number;
+}
+
 export interface WorkspaceSymbolIdentity {
   total?: number;
   bound?: number;
@@ -4947,6 +5004,7 @@ export interface WorkspaceSystemEdge {
   structural?: boolean;
   contract_refs?: string[];
   strategy?: string | null;
+  family?: string | null;
 }
 
 /** ``GET /api/workspace/system-graph?view=map``: the graph without diagnostics. */
@@ -4955,6 +5013,7 @@ export interface WorkspaceSystemGraphMapResponse {
   generated_at?: string;
   nodes?: WorkspaceSystemNode[];
   edges?: WorkspaceSystemMapEdge[];
+  groups?: WorkspaceServiceGroup[];
 }
 
 export interface WorkspaceSystemGraphResponse {
@@ -4963,6 +5022,7 @@ export interface WorkspaceSystemGraphResponse {
   nodes?: WorkspaceSystemNode[];
   edges?: WorkspaceSystemEdge[];
   diagnostics?: WorkspaceExtractionDiagnostics;
+  groups?: WorkspaceServiceGroup[];
 }
 
 /** An edge of the map's lean view. Mirrors ``core.workspace.system_map_view``. */
@@ -4977,6 +5037,7 @@ export interface WorkspaceSystemMapEdge {
   structural?: boolean;
   contract_refs?: string[] | null;
   strategy?: string | null;
+  family?: string | null;
   ref_count?: number;
 }
 
@@ -4992,6 +5053,7 @@ export interface WorkspaceSystemNode {
   is_orphan_provider?: boolean;
   is_orphan_consumer?: boolean;
   is_isolated?: boolean;
+  group?: string | null;
 }
 
 /** One consumer file the join looked at, and the state it ended in. */
