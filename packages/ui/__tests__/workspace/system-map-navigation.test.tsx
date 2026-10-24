@@ -212,12 +212,13 @@ describe("shortcut keys", () => {
     expect(shortcutFor({ key: "f", altKey: true })).toBeNull();
     expect(shortcutFor({ key: "Escape", defaultPrevented: true })).toBeNull();
     expect(shortcutFor({ key: "f", target: document.createElement("input") })).toBeNull();
-    // Ctrl+K reaches the map from any field; nothing reaches it from inside a dialog.
+    // Ctrl+K reaches the map from any field or dialog; plain keys inside a dialog do not.
     expect(shortcutFor({ key: "k", ctrlKey: true, target: document.createElement("input") })).toBe("search");
     const dialog = document.createElement("div");
     dialog.setAttribute("role", "dialog");
     const inside = dialog.appendChild(document.createElement("button"));
     expect(shortcutFor({ key: "Escape", target: inside })).toBeNull();
+    expect(shortcutFor({ key: "k", metaKey: true, target: inside })).toBe("search");
   });
 });
 

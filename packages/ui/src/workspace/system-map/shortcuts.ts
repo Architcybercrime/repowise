@@ -3,8 +3,8 @@
  * help overlay prints. Modelled on the Architecture graph's
  * `useGraphKeyboardShortcuts`: `/` and Ctrl/Cmd+K search, Escape backs out,
  * `?` toggles help; the map adds `f` focus, `b` between and `l` list. Keys
- * typed into a field (Ctrl/Cmd+K aside), pressed inside a dialog, or with Alt
- * or a modifier other than Ctrl/Cmd+K, are not shortcuts. Pure, no React.
+ * typed into a field or pressed inside a dialog (Ctrl/Cmd+K aside in both),
+ * or with Alt or a modifier other than Ctrl/Cmd+K, are not shortcuts. Pure, no React.
  */
 
 import type { SystemMapNavCopy } from "./nav-copy";
@@ -51,10 +51,10 @@ function inDialog(target: EventTarget | null | undefined): boolean {
  * handled (the canvas's own Escape, a dialog) is left alone.
  */
 export function shortcutFor(e: ShortcutKey): MapShortcut | null {
-  if (e.defaultPrevented || e.altKey || inDialog(e.target)) return null;
-  // Ctrl/Cmd+K works from any field: the map holds the shortcut while it is on screen.
+  if (e.defaultPrevented || e.altKey) return null;
+  // Ctrl/Cmd+K works from any field and any dialog: the map holds the shortcut while it is on screen.
   if (e.ctrlKey || e.metaKey) return e.key === "k" || e.key === "K" ? "search" : null;
-  return typing(e.target) ? null : (PLAIN[e.key] ?? null);
+  return typing(e.target) || inDialog(e.target) ? null : (PLAIN[e.key] ?? null);
 }
 
 /** The help overlay's rows, in reading order. */
