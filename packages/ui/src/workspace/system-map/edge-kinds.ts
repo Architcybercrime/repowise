@@ -18,6 +18,13 @@ import type { SystemEdge, SystemEdgeKind, SystemEdgeMatchType } from "@repowise-
 /** Whether an edge reflects a structural contract/dependency or behavioral co-change. */
 export type EdgeCategory = "structural" | "behavioral";
 
+/**
+ * The filter family an edge kind belongs to. The map offers families, not
+ * kinds, as its first filter row: Runtime and Data are drawn by default, Build
+ * (package) and History (co-change) are opt-in. See `edge-families.ts`.
+ */
+export type EdgeFamily = "runtime" | "data" | "build" | "history";
+
 export interface SystemEdgeKindStyle {
   kind: SystemEdgeKind;
   /** Short human label for the legend and inspector. */
@@ -26,6 +33,7 @@ export interface SystemEdgeKindStyle {
   color: string;
   icon: LucideIcon;
   category: EdgeCategory;
+  family: EdgeFamily;
 }
 
 /**
@@ -34,13 +42,13 @@ export interface SystemEdgeKindStyle {
  * theme vars so the map stays consistent with the C4 / knowledge-graph views.
  */
 export const SYSTEM_EDGE_KINDS: Record<SystemEdgeKind, SystemEdgeKindStyle> = {
-  http: { kind: "http", label: "HTTP", color: "var(--color-accent-secondary)", icon: ArrowRight, category: "structural" },
-  grpc: { kind: "grpc", label: "gRPC", color: "var(--color-accent-fill)", icon: Zap, category: "structural" },
-  socket: { kind: "socket", label: "Socket", color: "var(--color-info)", icon: Signal, category: "structural" },
-  event: { kind: "event", label: "Event", color: "var(--color-warning)", icon: Radio, category: "structural" },
-  package: { kind: "package", label: "Package", color: "var(--color-accent-primary)", icon: Boxes, category: "structural" },
-  db: { kind: "db", label: "Database", color: "var(--color-text-tertiary)", icon: Database, category: "structural" },
-  co_change: { kind: "co_change", label: "Co-change", color: "var(--color-edge-co-change)", icon: Link2, category: "behavioral" },
+  http: { kind: "http", label: "HTTP", color: "var(--color-accent-secondary)", icon: ArrowRight, category: "structural", family: "runtime" },
+  grpc: { kind: "grpc", label: "gRPC", color: "var(--color-accent-fill)", icon: Zap, category: "structural", family: "runtime" },
+  socket: { kind: "socket", label: "Socket", color: "var(--color-info)", icon: Signal, category: "structural", family: "runtime" },
+  event: { kind: "event", label: "Event", color: "var(--color-warning)", icon: Radio, category: "structural", family: "runtime" },
+  package: { kind: "package", label: "Package", color: "var(--color-accent-primary)", icon: Boxes, category: "structural", family: "build" },
+  db: { kind: "db", label: "Database", color: "var(--color-text-tertiary)", icon: Database, category: "structural", family: "data" },
+  co_change: { kind: "co_change", label: "Co-change", color: "var(--color-edge-co-change)", icon: Link2, category: "behavioral", family: "history" },
 };
 
 const FALLBACK_KIND: SystemEdgeKindStyle = {
@@ -49,6 +57,7 @@ const FALLBACK_KIND: SystemEdgeKindStyle = {
   color: "var(--color-text-tertiary)",
   icon: ArrowRight,
   category: "structural",
+  family: "runtime",
 };
 
 /** Resolve the style for an edge kind, tolerant of an unknown future kind. */

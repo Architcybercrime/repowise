@@ -1,8 +1,10 @@
 /**
  * Live System Map public surface: the map, its lens control, drawer, lens
  * results and findings; the overlay builders for each lens; the AI prompt
- * builders and the pure model helpers behind them; layout, registries and
- * overlay types. The rail panels stay exported for hosts that still use them.
+ * builders and the pure model helpers behind them; the levels model (groups,
+ * bands, focus columns, paths between two services, draw budget); layout,
+ * registries and overlay types. The rail panels stay exported for hosts that
+ * still use them.
  */
 
 export {
@@ -98,6 +100,73 @@ export {
   type SystemEdgeKindStyle,
   type EdgeCategory,
 } from "./edge-kinds";
+export {
+  buildLevelView,
+  type LevelView,
+} from "./levels";
+export {
+  buildEstateView,
+  activeGroups,
+  linkedWeights,
+  groupNodeId,
+  GROUPING_MIN_SERVICES,
+  OPEN_GROUP_LIMIT,
+  TRAY_NODE_ID,
+  ESTATE_MORE_ID,
+  type EstateView,
+} from "./estate-view";
+export {
+  focusColumns,
+  placeFocusColumns,
+  focusNodeId,
+  focusMoreId,
+  type FocusColumn,
+  type FocusConnector,
+  type FocusEntry,
+  type FocusLayout,
+  type FocusPlacement,
+} from "./focus-columns";
+export {
+  servicesBetween,
+  shortestPaths,
+  buildAdjacency,
+  type BetweenOptions,
+  type BetweenResult,
+  type PathHop,
+  type ServicePath,
+} from "./between";
+export { connectEdges, summarizeLinks, bandId, type ConnectedEdges } from "./bands";
+export { DRAW_BUDGET, allocateSlots, capEdges, truncationReport, type BudgetContainer } from "./draw-budget";
+export {
+  EDGE_FAMILY_ORDER,
+  DEFAULT_EDGE_FAMILIES,
+  LINKED_FAMILIES,
+  edgeFamily,
+  familyCounts,
+  linkWeight,
+  type EdgeFamily,
+  type FamilyCount,
+} from "./edge-families";
+export type {
+  DrawBudget,
+  DrawnBand,
+  DrawnEdge,
+  DrawnGroupNode,
+  DrawnMoreNode,
+  DrawnNode,
+  DrawnServiceNode,
+  DrawnSingleEdge,
+  DrawnTrayNode,
+  FocusColumnId,
+  LevelViewState,
+  LevelsEdge,
+  LevelsGraph,
+  LevelsGroupMeta,
+  LevelsNode,
+  LinkSummary,
+  MapLevel,
+  TruncationReport,
+} from "./level-types";
 export { SYSTEM_NODE_KINDS, NODE_KIND_ORDER, nodeKindStyle, type SystemNodeKindStyle } from "./node-kinds";
 export {
   resolveNodeOverlay,
