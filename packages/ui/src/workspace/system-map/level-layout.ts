@@ -90,6 +90,8 @@ export async function computeLevelLayout(
   const sizes = options.sizes ?? LEVEL_NODE_SIZES;
   if (input.kind === "columns") return placeFocusColumns(input.view.focus!, { size: sizes.service });
 
+  // The key leaves out input order on purpose: a scope seen before comes back
+  // exactly as it was shown, which is the stability the order exists for.
   const run = async (scope: LayoutScope): Promise<LevelPositions> => {
     const key = scopeSignature(scope);
     const hit = options.cache?.get(key);
@@ -106,7 +108,8 @@ export async function computeLevelLayout(
   const fitted = new Map<string, FittedContainer>(
     await Promise.all(plan.interiors.map(async (s) => [s.id, fitContainer(await run(s))] as const)),
   );
-  const empty = fitContainer(new Map());
+  // An open container with nothing laid out inside keeps its closed card size.
+  const empty = sizes.group;
   const root: LayoutScope = {
     ...plan.root,
     nodes: plan.root.nodes.map((n) => {

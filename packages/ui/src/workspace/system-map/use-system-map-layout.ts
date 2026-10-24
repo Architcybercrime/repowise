@@ -98,13 +98,18 @@ export function useSystemMapLayout({
       return;
     }
     setLoading(true);
-    computeSystemMapPositions(layoutGraph).then((result) => {
-      cache.current.set(signature, result);
-      if (!cancelled) {
-        setPositions(result);
-        setLoading(false);
-      }
-    });
+    computeSystemMapPositions(layoutGraph).then(
+      (result) => {
+        cache.current.set(signature, result);
+        if (!cancelled) {
+          setPositions(result);
+          setLoading(false);
+        }
+      },
+      () => {
+        if (!cancelled) setLoading(false);
+      },
+    );
     return () => {
       cancelled = true;
     };

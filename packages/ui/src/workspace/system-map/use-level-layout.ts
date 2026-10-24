@@ -25,7 +25,10 @@ export interface UseLevelLayoutArgs {
 
 export interface LevelLayout {
   positions: ReadonlyMap<string, C4LayoutPosition> | null;
+  /** True from the render a new layout is asked for until it lands or fails. */
   loading: boolean;
+  /** The last layout failed; `positions` are those of the view before it. */
+  failed: boolean;
 }
 
 export function useLevelLayout({ graph, view, sizes = LEVEL_NODE_SIZES }: UseLevelLayoutArgs): LevelLayout {
@@ -43,36 +46,37 @@ export function useLevelLayout({ graph, view, sizes = LEVEL_NODE_SIZES }: UseLev
   }, [input, sizes]);
 
   const cache = useRef(createLayoutCache());
+  const previous = useRef<LevelPositions | undefined>(undefined);
   const cachedGraph = useRef(graph);
   if (cachedGraph.current !== graph) {
     cachedGraph.current = graph;
-    cache.current.clear();
+    cache.current = createLayoutCache();
+    previous.current = undefined;
   }
-  const previous = useRef<LevelPositions | undefined>(undefined);
   const latestInput = useRef(input);
   latestInput.current = input;
 
-  const [positions, setPositions] = useState<LevelPositions | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The key the shown positions belong to; loading is derived, so it is true
+  // on the very render the key changes rather than one commit later.
+  const [settled, setSettled] = useState<{ key: string | null; positions: LevelPositions | null; failed: boolean }>(
+    { key: null, positions: null, failed: false },
+  );
 
   useEffect(() => {
     const current = latestInput.current;
     if (!current || key === null) {
-      setPositions(null);
-      setLoading(false);
+      setSettled({ key, positions: null, failed: false });
       return;
     }
     let cancelled = false;
-    setLoading(true);
     computeLevelLayout(current, { cache: cache.current, previous: previous.current, sizes }).then(
       (result) => {
         if (cancelled) return;
         previous.current = result;
-        setPositions(result);
-        setLoading(false);
+        setSettled({ key, positions: result, failed: false });
       },
       () => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setSettled((s) => ({ key, positions: s.positions, failed: true }));
       },
     );
     return () => {
@@ -82,5 +86,5 @@ export function useLevelLayout({ graph, view, sizes = LEVEL_NODE_SIZES }: UseLev
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  return { positions, loading };
+  return { positions: settled.positions, loading: settled.key !== key, failed: settled.failed };
 }
