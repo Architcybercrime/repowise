@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLevelView } from "../../src/workspace/system-map/levels";
+import { buildLevelView, normalizeGraph } from "../../src/workspace/system-map/levels";
 import {
   ESTATE_MORE_ID,
   GROUPING_MIN_SERVICES,
@@ -277,6 +277,16 @@ describe("level precedence and determinism", () => {
     expect(buildLevelView(dirty)).toEqual(buildLevelView(ESHOP_GRAPH));
     const focus = buildLevelView(dirty, { focus: "basket.api" });
     expect(focus.nodes.some((n) => n.type === "service" && n.serviceId === "gone")).toBe(false);
+  });
+
+  it("picks the same survivor of a duplicate id whatever the payload order", () => {
+    const a = { id: "x", name: "x", repo: "repo-a" };
+    const b = { id: "x", name: "x", repo: "repo-b" };
+    const heavy = { ...ESHOP_GRAPH.edges[0]!, weight: 9 };
+    const g1: LevelsGraph = { nodes: [...ESHOP_GRAPH.nodes, a, b], edges: [...ESHOP_GRAPH.edges, heavy] };
+    const g2: LevelsGraph = { nodes: [b, ...ESHOP_GRAPH.nodes, a], edges: [heavy, ...ESHOP_GRAPH.edges] };
+    expect(normalizeGraph(g1)).toEqual(normalizeGraph(g2));
+    expect(normalizeGraph(g1).nodes.filter((n) => n.id === "x")).toEqual([a]);
   });
 
   it("gives every drawn node and edge a unique id at every level", () => {

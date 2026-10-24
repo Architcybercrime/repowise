@@ -53,22 +53,31 @@ export interface LevelView {
 
 /**
  * One node per id, edges only between known nodes, both in id order, so a
- * payload with duplicates or dangling edges draws no phantom card and every
- * summary lists its edge ids the same way whatever order the payload arrived
- * in. The first of duplicate ids wins.
+ * payload with duplicates or dangling edges draws no phantom card and the
+ * view is the same whatever order the payload arrived in. Of two records
+ * sharing an id, the one whose serialization sorts first wins.
  */
 export function normalizeGraph(graph: LevelsGraph): LevelsGraph {
-  const nodes = new Map<string, LevelsGraph["nodes"][number]>();
-  for (const n of graph.nodes) if (!nodes.has(n.id)) nodes.set(n.id, n);
-  const edges = new Map<string, LevelsGraph["edges"][number]>();
-  for (const e of graph.edges) {
-    if (nodes.has(e.source) && nodes.has(e.target) && !edges.has(e.id)) edges.set(e.id, e);
+  const nodes = dedupeById(graph.nodes);
+  const known = new Set(nodes.map((n) => n.id));
+  const edges = dedupeById(graph.edges.filter((e) => known.has(e.source) && known.has(e.target)));
+  return { ...graph, nodes, edges };
+}
+
+/** One record per id, in id order; a duplicate id keeps the copy that serializes first, whatever its position. */
+function dedupeById<T extends { id: string }>(records: readonly T[]): T[] {
+  const kept = new Map<string, { record: T; key: string }>();
+  for (const record of records) {
+    const key = stableKey(record);
+    const prior = kept.get(record.id);
+    if (!prior || key < prior.key) kept.set(record.id, { record, key });
   }
-  return {
-    ...graph,
-    nodes: [...nodes.values()].sort((x, y) => compareIds(x.id, y.id)),
-    edges: [...edges.values()].sort((x, y) => compareIds(x.id, y.id)),
-  };
+  return [...kept.values()].map((k) => k.record).sort((x, y) => compareIds(x.id, y.id));
+}
+
+/** JSON with keys in sorted order, so two equal records always serialize alike. */
+function stableKey(record: object): string {
+  return JSON.stringify(record, Object.keys(record).sort());
 }
 
 /** The drawn graph for a view state. Exported helpers below it expect a normalized graph. */
