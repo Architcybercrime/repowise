@@ -1,7 +1,6 @@
 "use client";
 
 import useSWR from "swr";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CHAT_SHORTCUT_HINT, ChatDock, getArtifactSourceTarget } from "@repowise-dev/ui/chat";
@@ -14,6 +13,7 @@ import { useRepositoryChat } from "./repository-chat-provider";
 import { useChatDockHidden } from "./use-chat-dock-hidden";
 import { config, setChatDockHidden } from "@/lib/config";
 import { useTranslations } from "next-intl";
+import { NoProviderReason } from "./no-provider-reason";
 
 // Sigma's worst-case bottom-right stack is ~197px tall (layout status plus
 // five controls and spacing). Keep a small measured clearance above it.
@@ -122,20 +122,7 @@ function ConnectedRepositoryChatDock({ chat }: { chat: RepositoryChatValue }) {
       onDismiss={() => setChatDockHidden(true)}
       unverifiedFigureCopy={{ flag: t("unverifiedFigure"), note: t("unverifiedFiguresNote") }}
       sendDisabled={!anyConfigured}
-      sendDisabledReason={
-        <span>
-          {t.rich("noProviderShort", {
-            link: (chunks) => (
-              <Link
-                href="/settings"
-                className="text-[var(--color-accent-primary)] hover:underline"
-              >
-                {chunks}
-              </Link>
-            ),
-          })}
-        </span>
-      }
+      sendDisabledReason={<NoProviderReason repoId={chat.repoId} message="noProviderShort" />}
       modelSelectorSlot={<ModelSelector repoId={chat.repoId} activeProvider={chat.selectedProvider} activeModel={chat.selectedModel} onSelect={chat.selectModel} />}
       historySlot={
         <ConversationHistory

@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChatInterface as ChatInterfaceShell } from "@repowise-dev/ui/chat/chat-interface";
 import { getArtifactSourceTarget, useChatDraft } from "@repowise-dev/ui/chat";
@@ -14,6 +13,7 @@ import { ModelSelector } from "./model-selector";
 import { ConversationHistory } from "./conversation-history";
 import { useRepositoryChat } from "./repository-chat-provider";
 import { useTranslations } from "next-intl";
+import { NoProviderReason } from "./no-provider-reason";
 
 interface ChatInterfaceProps {
   repoId: string;
@@ -214,20 +214,7 @@ export function ChatInterface({
       artifactOverrides={artifactOverrides}
       unverifiedFigureCopy={{ flag: t("unverifiedFigure"), note: t("unverifiedFiguresNote") }}
       sendDisabled={!anyConfigured}
-      sendDisabledReason={
-        <span>
-          {t.rich("noProvider", {
-            link: (chunks) => (
-              <Link
-                href="/settings"
-                className="text-[var(--color-accent-primary)] hover:underline"
-              >
-                {chunks}
-              </Link>
-            ),
-          })}
-        </span>
-      }
+      sendDisabledReason={<NoProviderReason repoId={repoId} message="noProvider" />}
       historySlot={
         <div className="lg:hidden">
           <ConversationHistory

@@ -540,6 +540,32 @@ function KeyEditor({
   );
 }
 
+/** One provider's key field on its own, for a surface that offers a key
+ *  without the full provider list. `onCancel` runs on Escape and the close
+ *  button, after the draft is cleared. */
+export function ProviderKeyEntry({
+  provider,
+  onAddKey,
+  onCancel,
+  labels: labelOverrides,
+}: {
+  provider: ProviderOption;
+  onAddKey: ProviderSettingsProps["onAddKey"];
+  onCancel?: () => void;
+  labels?: Partial<ProviderSettingsLabels>;
+}) {
+  const keys = useKeyEditor(provider.id, onAddKey, () => undefined);
+  const entry: KeyEditorState = {
+    ...keys,
+    cancel: () => {
+      keys.cancel();
+      onCancel?.();
+    },
+  };
+  const labels = { ...DEFAULT_PROVIDER_SETTINGS_LABELS, ...labelOverrides };
+  return <KeyEditor provider={provider} keys={entry} labels={labels} />;
+}
+
 function ValidationLine({
   validation,
   labels,
