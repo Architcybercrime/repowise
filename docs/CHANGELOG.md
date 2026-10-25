@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Highlights
+
+- **Setup, in the dashboard** · Connect your agents, turn on sync, add coverage and add a model from one page, with a prompt for your agent on every row. → /repos/:id/settings/setup
+- **Add a model in two clicks** · The docs badge and chat open one sheet that lists the model sources on this machine, what a model adds and what it costs. → /repos/:id/docs
+- **A tour for new repos** · After a first index, a three-step welcome shows what stood out, connects your agent and suggests what to add next.
+- **Settings, regrouped** · Settings is grouped by what you manage, and a repo's excluded paths and docs style live in `.repowise/config.yaml`, so the dashboard and the CLI agree. → /repos/:id/settings
+
+---
+
 ## [0.58.0] - 2026-10-20
 
 repowise 0.58 makes the first run read like a plan. `repowise init` opens on one plan screen with the scan, an ETA and every step it will run, shows progress as a checklist of finished steps with counts and times, and ends on one finish panel that leads with `repowise serve`. A logged-in Claude Code, Codex or OpenCode is offered with its quota, agents get `--progress json`, a folder of repositories gets the same screen with `--repos`, and init, status and update share one set of mode names, with `repowise update --full` taking a fast index to a full one.

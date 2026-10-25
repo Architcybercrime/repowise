@@ -109,6 +109,9 @@ repowise init --yes --no-prose    # graph, git, health, dead code, documentation
 repowise serve                    # dashboard + MCP server (needs Node 20+; first run downloads the UI)
 ```
 
+`serve` opens your browser on a short guided tour of the repo and Setup, where you
+connect agents, turn on sync and add coverage or a model.
+
 `init` wires Claude Code for this repo and points the global repowise MCP entry
 here (on the interactive plan screen, `s` keeps it where it is). Restart Claude Code or run `/mcp`, then ask
 *"Use Repowise `get_overview` to summarize this repository"* or *"What breaks if I
