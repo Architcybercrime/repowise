@@ -73,9 +73,9 @@ export function registerOnboarding(ctx: RepowiseContext): vscode.Disposable {
       ctx.setExtensionState("not-installed");
       const choice = await vscode.window.showWarningMessage(
         "The repowise CLI was not found. Install it with: uv tool install repowise (or pip install repowise)",
-        "Copy command",
+        "Copy uv command",
       );
-      if (choice === "Copy command") {
+      if (choice === "Copy uv command") {
         await vscode.env.clipboard.writeText("uv tool install repowise");
       }
       return;
