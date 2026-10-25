@@ -18,7 +18,8 @@ from click.testing import CliRunner
 
 from repowise.cli.commands import doctor_cmd
 from repowise.cli.commands.doctor_cmd import collect_repo_checks, doctor_command, repo_checks
-from repowise.cli.commands.doctor_cmd._checks import integrations
+from repowise.cli.commands.doctor_cmd._checks import integrations, providers
+from repowise.cli.commands.doctor_cmd._types import _check
 
 # "*" stands for a per-target or per-language suffix.
 PINNED_IDS = {
@@ -65,24 +66,32 @@ def _id_value(node: ast.expr) -> str | None:
     return None
 
 
+def _bound_pairs(target: ast.expr, value: ast.expr) -> list[tuple[ast.expr, ast.expr]]:
+    if isinstance(target, ast.Tuple) and isinstance(value, ast.Tuple):
+        return list(zip(target.elts, value.elts, strict=True))
+    return [(target, value)]
+
+
+def _node_ids(node: ast.AST) -> list[str | None]:
+    if isinstance(node, ast.keyword) and node.arg == "check_id":
+        return [_id_value(node.value)]
+    if not isinstance(node, ast.Assign):
+        return []
+    pairs = [pair for target in node.targets for pair in _bound_pairs(target, node.value)]
+    return [
+        _id_value(value)
+        for name, value in pairs
+        if isinstance(name, ast.Name) and name.id in _ID_NAMES
+    ]
+
+
 def _ids_in(tree: ast.AST) -> set[str]:
-    """Every literal id: ``check_id=`` arguments and ``check_id``/``CHECK_ID`` assignments."""
-    found: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.keyword) and node.arg == "check_id":
-            found.add(_id_value(node.value) or "")
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id in _ID_NAMES:
-                    found.add(_id_value(node.value) or "")
-                elif isinstance(target, ast.Tuple) and isinstance(node.value, ast.Tuple):
-                    for name, value in zip(target.elts, node.value.elts, strict=True):
-                        if isinstance(name, ast.Name) and name.id in _ID_NAMES:
-                            found.add(_id_value(value) or "")
-    # A keyword passing a variable through resolves to "" here; the
-    # assignment that bound it is what carries the literal.
-    found.discard("")
-    return found
+    """Every literal id: ``check_id=`` arguments and ``check_id``/``CHECK_ID`` assignments.
+
+    A keyword passing a variable through yields None here; the assignment
+    that bound it is what carries the literal.
+    """
+    return {i for node in ast.walk(tree) for i in _node_ids(node) if i}
 
 
 def _source_trees() -> list[ast.AST]:
@@ -126,9 +135,14 @@ def _git_repo(path: Path) -> Path:
 
 @pytest.fixture
 def no_mcp_launch(monkeypatch):
-    """Keep the run off the machine's real MCP registration."""
+    """Keep the run off the machine's real MCP registration and hosted account."""
     integrations._mcp_responds_check.cache_clear()
     monkeypatch.setattr(integrations, "_registered_mcp_entry", lambda: None)
+    monkeypatch.setattr(
+        providers,
+        "_hosted_account_check",
+        lambda: _check("Hosted account", True, "", check_id="hosted-account"),
+    )
     yield
     integrations._mcp_responds_check.cache_clear()
 

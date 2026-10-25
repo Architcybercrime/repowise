@@ -266,9 +266,9 @@ def _consistency_rows(ctx: CheckContext) -> list[DoctorCheck]:
             )
         )
     except Exception as exc:
-        # Name the failure. "Could not check" is reported as OK, so a
-        # reconciliation that raises on every run would look exactly like one
-        # that had nothing to reconcile.
+        # Name the failure. "Could not check" is a warn, not a fail, so without
+        # the exception a reconciliation that raises on every run would read
+        # like one that had nothing to reconcile.
         rows.append(
             _check(
                 "Store consistency",

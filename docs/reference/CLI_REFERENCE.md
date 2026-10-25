@@ -2056,7 +2056,8 @@ repowise doctor --workspace --repair
 - **`--format json`** prints `{"ok": bool, "checks": [...]}`. Each check carries a stable `id` (kebab case, such as
   `post-commit-hook` or `mcp-responds`), a display `name`, a `level` (`ok`, `warn` or `fail`), `ok` (false only for
   `fail`), a `detail` and a `fix`: the exact command that resolves it, or `null`. Match on `id`; names can change.
-  A `warn` never changes the exit code.
+  A `warn` never changes the exit code. With `--workspace`, ids repeat once per repo and `name` starts with the
+  repo's alias.
 - **Vector store** fails when `.repowise/lancedb` won't open, naming the error. An open store with no indexable pages
   reports all missing; `--repair` won't re-embed it with a paid embedder, it prints the count and points to `repowise
   reindex`.
