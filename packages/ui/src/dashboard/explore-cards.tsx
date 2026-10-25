@@ -86,7 +86,7 @@ export function AskAnythingCard({
           type="submit"
           disabled={!question.trim()}
           aria-label="Ask"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--color-accent-fill)] text-[var(--color-text-on-accent)] transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--color-action-primary)] text-[var(--color-text-on-action)] transition-colors hover:bg-[var(--color-action-primary-hover)] disabled:opacity-40"
         >
           <ArrowRight className="h-4 w-4" />
         </button>

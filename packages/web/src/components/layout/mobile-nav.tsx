@@ -25,7 +25,7 @@ import { LanguageSwitcher } from "./language-switcher";
 import { ThemeToggle } from "@repowise-dev/ui/shared/theme-toggle";
 import { cn } from "@/lib/utils/cn";
 import { GLOBAL_NAV, WORKSPACE_NAV, repoNavGroups } from "./nav-items";
-import { NavGroupList } from "./nav-group-list";
+import { NAV_ROW_ACTIVE, NAV_ROW_IDLE, NavGroupList } from "./nav-group-list";
 import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
 
 interface MobileNavProps {
@@ -120,18 +120,11 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
                       href={item.href}
                       className={cn(
                         "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-base transition-colors",
-                        isActive
-                          ? "bg-[var(--color-bg-elevated)] font-medium text-[var(--color-text-primary)]"
-                          : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[var(--color-text-primary)]",
+                        isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE,
                       )}
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <Icon
-                          className={cn(
-                            "h-4 w-4",
-                            isActive && "text-[var(--color-accent-primary)]",
-                          )}
-                        />
+                        <Icon className="h-4 w-4" />
                       </span>
                       <span className="truncate">{t(item.labelKey)}</span>
                       {isNew(item.href) && <NewMark />}
@@ -159,18 +152,11 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
                           href={item.href}
                           className={cn(
                             "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs transition-colors",
-                            isActive
-                              ? "bg-[var(--color-bg-elevated)] font-medium text-[var(--color-text-primary)]"
-                              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[var(--color-text-primary)]",
+                            isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE,
                           )}
                         >
                           <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                            <Icon
-                              className={cn(
-                                "h-4 w-4",
-                                isActive && "text-[var(--color-accent-primary)]",
-                              )}
-                            />
+                            <Icon className="h-4 w-4" />
                           </span>
                           <span className="truncate">{t(item.labelKey)}</span>
                         </Link>
@@ -223,18 +209,11 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
                                         href={item.href}
                                         className={cn(
                                           "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs transition-colors",
-                                          isActive
-                                            ? "bg-[var(--color-bg-elevated)] font-medium text-[var(--color-text-primary)]"
-                                            : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[var(--color-text-primary)]",
+                                          isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE,
                                         )}
                                       >
                                         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                                          <Icon
-                                            className={cn(
-                                              "h-4 w-4",
-                                              isActive && "text-[var(--color-accent-primary)]",
-                                            )}
-                                          />
+                                          <Icon className="h-4 w-4" />
                                         </span>
                                         <span className="truncate">{t(item.labelKey)}</span>
                                         {isNew(item.href) && <NewMark />}

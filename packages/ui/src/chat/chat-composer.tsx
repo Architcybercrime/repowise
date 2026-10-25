@@ -110,7 +110,7 @@ export function ChatComposer({
             isStreaming
               ? "border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] hover:border-[var(--color-border-hover)]"
               : hasText && !disabled
-                ? "bg-[var(--color-accent-fill)] text-[var(--color-text-on-accent)] hover:bg-[var(--color-accent-fill-hover)]"
+                ? "bg-[var(--color-action-primary)] text-[var(--color-text-on-action)] hover:bg-[var(--color-action-primary-hover)]"
                 : "bg-[var(--color-bg-elevated)] text-[var(--color-text-tertiary)]",
           )}
           onClick={isStreaming ? onCancel : () => void submit()}

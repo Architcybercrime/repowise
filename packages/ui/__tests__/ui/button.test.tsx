@@ -8,6 +8,9 @@ describe("Button", () => {
     const btn = screen.getByRole("button", { name: "Click me" });
     expect(btn).toBeInTheDocument();
     expect(btn.className).toMatch(/inline-flex/);
+    // Primary actions are ink; orange stays on the focus ring only.
+    expect(btn.className).toContain("bg-[var(--color-action-primary)]");
+    expect(btn.className).not.toMatch(/accent-fill|gradient-ember/);
   });
 
   it("applies the destructive variant class when requested", () => {
