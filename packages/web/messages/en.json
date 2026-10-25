@@ -1341,7 +1341,8 @@
     "sameAs": "Same as",
     "startFailed": "Couldn't start writing the docs",
     "badgeLabel": "Subsystem pages unwritten",
-    "badgeAction": "Write with a model"
+    "badgeAction": "Write with a model",
+    "badgeTitle": "The subsystem pages are still generated from code structure. Write them with a model for the how and why."
   },
   "chat": {
     "addModel": "Add a model",

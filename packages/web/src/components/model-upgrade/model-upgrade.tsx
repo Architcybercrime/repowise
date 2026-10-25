@@ -70,14 +70,15 @@ function useRefreshProviders() {
   return () =>
     mutate(
       (key) =>
-        (Array.isArray(key) && key[0] === "/api/providers") ||
         key === "/api/providers" ||
+        (Array.isArray(key) && key[0] === "/api/providers") ||
         (typeof key === "string" && key.startsWith("providers:")),
     );
 }
 
 /** Sources detected on this machine, fetched only while the sheet is open:
- *  detection asks each agent CLI whether it is signed in. */
+ *  detection asks each agent CLI whether it is signed in. A failed fetch
+ *  still offers "Paste a key" and hosted. */
 function useModelSources(repoId: string, open: boolean) {
   const { data, isLoading } = useSWR(
     open ? ["/api/providers", repoId, "detect"] : null,
@@ -90,7 +91,7 @@ function useModelSources(repoId: string, open: boolean) {
     sources,
     keyProviders: useMemo(() => pasteKeyProviders(providers), [providers]),
     activeProvider: data?.active.provider ?? null,
-    loading: isLoading || !data,
+    loading: isLoading,
   };
 }
 
@@ -104,12 +105,14 @@ function useSheetEstimate(repoId: string, open: boolean, source: ModelSource | u
     () => generateEstimate(repoId, UNWRITTEN, priced ? { provider: priced } : {}),
     { revalidateOnFocus: false },
   );
+  // Per open: a count from an earlier open may be out of date.
   const lastPages = useRef<number | null>(null);
-  if (data) lastPages.current = data.total_pages;
-  const pricedHere = priced != null && data?.provider.name === priced;
+  if (!open) lastPages.current = null;
+  else if (data) lastPages.current = data.total_pages;
+  // The request named the provider, so a priced estimate is that provider's.
   return {
     pages: lastPages.current,
-    costText: pricedHere ? formatEstimateCost(data.estimate) : null,
+    costText: priced != null && data ? formatEstimateCost(data.estimate) : null,
     loading: isLoading,
   };
 }

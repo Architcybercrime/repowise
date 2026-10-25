@@ -175,12 +175,12 @@ function SourceList({ labels, ...props }: SourceListProps) {
       </div>
     );
   }
+  const choices = props.sources.filter((s) => s.kind !== "hosted");
+  const hosted = props.sources.some((s) => s.kind === "hosted");
   return (
-    <div role="radiogroup" aria-label={labels.sourcesLabel} className="flex flex-col gap-1.5">
-      {props.sources.map((source) =>
-        source.kind === "hosted" ? (
-          <HostedRow key={source.id} href={props.hostedHref} labels={labels} />
-        ) : (
+    <div className="flex flex-col gap-1.5">
+      <div role="radiogroup" aria-label={labels.sourcesLabel} className="flex flex-col gap-1.5">
+        {choices.map((source) => (
           <SourceRow
             key={source.id}
             name={name}
@@ -189,8 +189,8 @@ function SourceList({ labels, ...props }: SourceListProps) {
             onSelect={props.onSelect}
             labels={labels}
           />
-        ),
-      )}
+        ))}
+      </div>
       {props.selectedId === PASTE_SOURCE_ID && (
         <PasteKey
           providers={props.keyProviders}
@@ -199,6 +199,7 @@ function SourceList({ labels, ...props }: SourceListProps) {
           {...(props.keyLabels ? { keyLabels: props.keyLabels } : {})}
         />
       )}
+      {hosted && <HostedRow href={props.hostedHref} labels={labels} />}
     </div>
   );
 }
@@ -261,7 +262,7 @@ function SourceRow({
           {labels.detected[source.detected]}
         </span>
       ) : (
-        <span />
+        <span aria-hidden />
       )}
     </label>
   );

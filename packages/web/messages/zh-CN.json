@@ -1341,7 +1341,8 @@
     "sameAs": "等同于",
     "startFailed": "无法开始撰写文档",
     "badgeLabel": "子系统页面未撰写",
-    "badgeAction": "用模型撰写"
+    "badgeAction": "用模型撰写",
+    "badgeTitle": "子系统页面仍由代码结构生成。用模型撰写，讲清原理与缘由。"
   },
   "chat": {
     "addModel": "添加模型",

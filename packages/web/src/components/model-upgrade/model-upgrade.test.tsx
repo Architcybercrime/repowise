@@ -6,6 +6,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RepoBreadcrumb } from "@/components/layout/repo-breadcrumb";
 import { NoProviderReason } from "@/components/chat/no-provider-reason";
+import { useModelUpgrade } from "./model-upgrade";
 
 const mocks = vi.hoisted(() => ({
   getProviders: vi.fn(),
@@ -68,6 +69,18 @@ function estimate(provider: string | null, cost: number | null) {
   };
 }
 
+/** The chat surfaces' wiring: the sheet lives beside the composer and the
+ *  no-provider reason only opens it. */
+function ChatHarness({ message }: { message: "noProvider" | "noProviderShort" }) {
+  const upgrade = useModelUpgrade("r1");
+  return (
+    <>
+      <NoProviderReason message={message} onAddModel={upgrade.openSheet} />
+      {upgrade.sheet}
+    </>
+  );
+}
+
 function renderFresh(ui: React.ReactElement) {
   return render(<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>{ui}</SWRConfig>);
 }
@@ -97,7 +110,7 @@ describe("ways in to the model sheet", () => {
   });
 
   it("the chat no-provider state opens it and keeps the settings link", async () => {
-    renderFresh(<NoProviderReason repoId="r1" message="noProvider" />);
+    renderFresh(<ChatHarness message="noProvider" />);
     expect(screen.getByRole("link", { name: "settings" }).getAttribute("href")).toBe("/settings");
 
     fireEvent.click(screen.getByRole("button", { name: "Add a model" }));
@@ -108,7 +121,7 @@ describe("ways in to the model sheet", () => {
 
 describe("writing the docs", () => {
   async function openSheet() {
-    renderFresh(<NoProviderReason repoId="r1" message="noProviderShort" />);
+    renderFresh(<ChatHarness message="noProviderShort" />);
     fireEvent.click(screen.getByRole("button", { name: "Add a model" }));
     await screen.findByText("46 pages to write");
   }

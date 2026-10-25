@@ -310,6 +310,15 @@ def resolve_for_repo(
     )
 
 
+def _logged_in(identity: Any) -> bool:
+    """One CLI's login check; a check that breaks counts as not signed in."""
+    try:
+        return bool(identity.is_logged_in())
+    except Exception:
+        logger.debug("Login check for %s failed", identity.slug, exc_info=True)
+        return False
+
+
 def _signed_in_agent_providers() -> set[str]:
     """Catalog providers whose agent CLI is installed and signed in here.
 
@@ -326,7 +335,7 @@ def _signed_in_agent_providers() -> set[str]:
     if not agents:
         return set()
     with ThreadPoolExecutor(max_workers=len(agents)) as pool:
-        signed_in = list(pool.map(lambda identity: identity.is_logged_in(), agents.values()))
+        signed_in = list(pool.map(_logged_in, agents.values()))
     return {name for name, ok in zip(agents, signed_in, strict=True) if ok}
 
 

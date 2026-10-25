@@ -27,17 +27,20 @@ export function DocsModeBadge({
   onAction,
   label = "Subsystem pages unwritten",
   actionLabel = "Write with a model",
+  title = TITLE,
 }: {
   mode: DocsMode;
   className?: string;
   onAction?: () => void;
   label?: string;
   actionLabel?: string;
+  /** Hover text. */
+  title?: string;
 }) {
   if (mode !== "deterministic") return null;
   if (!onAction) {
     return (
-      <span title={TITLE} className={cn(CHIP, className)}>
+      <span title={title} className={cn(CHIP, className)}>
         <Cog className="h-2.5 w-2.5" />
         {label}
       </span>
@@ -46,7 +49,7 @@ export function DocsModeBadge({
   return (
     <button
       type="button"
-      title={TITLE}
+      title={title}
       onClick={onAction}
       className={cn(
         "group inline-flex items-center gap-2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-model)]",

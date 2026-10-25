@@ -94,6 +94,7 @@ function DocsModeAction({ repoId, docsMode }: { repoId: string; docsMode: DocsMo
         onAction={upgrade.openSheet}
         label={t("badgeLabel")}
         actionLabel={t("badgeAction")}
+        title={t("badgeTitle")}
       />
       {upgrade.sheet}
     </>

@@ -354,6 +354,17 @@ def test_detect_names_signed_in_agent_clis(clean_env, monkeypatch):
     assert "codex" in calls
 
 
+def test_a_broken_login_check_counts_as_not_signed_in(clean_env, monkeypatch):
+    from repowise.core.agents.identity import AgentIdentity
+
+    def is_logged_in(self):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(AgentIdentity, "is_logged_in", is_logged_in)
+    by_id = {p["id"]: p for p in pc.list_provider_status(detect=True)["providers"]}
+    assert by_id["claude_cli"]["detected"] is None
+
+
 def test_list_provider_status_carries_the_embedder_registry(clean_env, tmp_path, monkeypatch):
     from repowise.core.providers.embedding import registry
 
