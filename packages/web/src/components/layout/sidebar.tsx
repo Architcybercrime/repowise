@@ -25,7 +25,7 @@ import { Separator } from "@repowise-dev/ui/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@repowise-dev/ui/ui/tooltip";
 import { ThemeToggle } from "@repowise-dev/ui/shared/theme-toggle";
 import { AddRepoDialog } from "@/components/repos/add-repo-dialog";
-import { NavGroupList } from "./nav-group-list";
+import { NAV_ROW_ACTIVE, NAV_ROW_IDLE, NavGroupList } from "./nav-group-list";
 import { VersionFooter } from "./version-footer";
 import { NewMark, useNavNewMark } from "./new-mark";
 import { FeedbackButton } from "./feedback-button";
@@ -297,10 +297,10 @@ export function Sidebar({
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div
-                                className="flex w-full items-center justify-center rounded-md p-2 text-[var(--color-accent-primary)]"
+                                className="flex w-full items-center justify-center rounded-md bg-[var(--color-bg-selected)] p-2 text-[var(--color-text-primary)]"
                                 aria-label={repo.name}
                               >
-                                <Circle className="h-2.5 w-2.5 fill-[var(--color-accent-primary)]" />
+                                <Circle className="h-2.5 w-2.5 fill-[var(--color-text-primary)]" />
                               </div>
                             </TooltipTrigger>
                             <TooltipContent side="right">{repo.name}</TooltipContent>
@@ -346,14 +346,14 @@ export function Sidebar({
                         // The name still truncates at ~24 characters, so the
                         // title carries the rest.
                         title={repo.name}
-                        className={cn(ROW, ROW_L1, isActive ? ROW_ACTIVE : ROW_IDLE)}
+                        className={cn(ROW, ROW_L1, isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE)}
                       >
                         <RowGlyph>
                           <Circle
                             className={cn(
                               "h-2 w-2",
                               isActive
-                                ? "fill-[var(--color-accent-primary)] text-[var(--color-accent-primary)]"
+                                ? "fill-[var(--color-text-primary)] text-[var(--color-text-primary)]"
                                 : "fill-[var(--color-text-tertiary)] text-[var(--color-text-tertiary)]",
                             )}
                           />
@@ -478,7 +478,7 @@ function SidebarSearchButton({ iconOnly }: { iconOnly: boolean }) {
   }
 
   return (
-    <button onClick={openPalette} className={cn(ROW, ROW_L1, ROW_IDLE)}>
+    <button onClick={openPalette} className={cn(ROW, ROW_L1, NAV_ROW_IDLE)}>
       <RowGlyph>
         <Search className="h-4 w-4" />
       </RowGlyph>
@@ -500,17 +500,6 @@ function SidebarSearchButton({ iconOnly }: { iconOnly: boolean }) {
 const ROW = "flex w-full items-center gap-2 rounded-lg px-2 transition-colors";
 const ROW_L1 = "py-1.5 text-base";
 const ROW_L2 = "py-1.5 text-xs";
-
-/**
- * Selected, quietly. This used to be an accent-muted wash plus accent text,
- * which coloured the entire row; on a sidebar where several rows can look
- * active at once that reads as noise. The ground carries the selection and a
- * single accent touch on the leading glyph carries the identity.
- */
-const ROW_ACTIVE =
-  "bg-[var(--color-bg-elevated)] font-medium text-[var(--color-text-primary)]";
-const ROW_IDLE =
-  "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[var(--color-text-primary)]";
 
 /** The fixed-width leading slot that keeps every label on the same column. */
 function RowGlyph({ children }: { children: React.ReactNode }) {
@@ -546,9 +535,7 @@ function SidebarNavItem({
             aria-label={ariaLabel}
             className={cn(
               "relative flex items-center justify-center rounded-lg p-2.5 transition-colors",
-              isActive
-                ? "bg-[var(--color-bg-elevated)] text-[var(--color-accent-primary)]"
-                : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)] hover:text-[var(--color-text-primary)]",
+              isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE,
             )}
           >
             <Icon className="h-[18px] w-[18px] shrink-0" />
@@ -564,15 +551,10 @@ function SidebarNavItem({
     <Link
       href={item.href}
       title={label}
-      className={cn(ROW, size === "sm" ? ROW_L2 : ROW_L1, isActive ? ROW_ACTIVE : ROW_IDLE)}
+      className={cn(ROW, size === "sm" ? ROW_L2 : ROW_L1, isActive ? NAV_ROW_ACTIVE : NAV_ROW_IDLE)}
     >
       <RowGlyph>
-        <Icon
-          className={cn(
-            size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4",
-            isActive && "text-[var(--color-accent-primary)]",
-          )}
-        />
+        <Icon className={size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"} />
       </RowGlyph>
       <span className="truncate">{label}</span>
       {isNew && <NewMark />}
