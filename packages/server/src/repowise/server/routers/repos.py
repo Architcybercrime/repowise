@@ -575,6 +575,7 @@ async def generate_estimate(
     repo_id: str,
     request: Request,
     body: GenerateRequestBody,
+    provider: str | None = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Cost + page counts for a generate selection, including cascade fallout.
@@ -582,7 +583,8 @@ async def generate_estimate(
     Resolves the exact same scope the job would (rehydrating the graph and
     re-parsing), so the returned page count and estimate match what a launched
     job spends. Heavier than the pre-index preflight because it walks the real
-    dependency graph rather than a file count.
+    dependency graph rather than a file count. ``?provider=`` prices a
+    provider the repo does not use yet, so a picker can show the cost first.
     """
     repo = await _get_repo_or_404(session, repo_id)
 
@@ -605,8 +607,10 @@ async def generate_estimate(
     gen_config = _build_generation_config(repo_path, job_config, wiki_style)
 
     # Price with the repo's configured provider/model, if one resolves.
-    _client, provider_name, model_name, provider_error = resolve_provider(str(repo_path))
-    provider = {"name": provider_name, "model": model_name, "error": provider_error}
+    _client, provider_name, model_name, provider_error = resolve_provider(
+        str(repo_path), provider
+    )
+    priced_with = {"name": provider_name, "model": model_name, "error": provider_error}
 
     session_factory = _resolve_repo_session_factory(request.app.state, repo_id)
     state = _load_state(repo_path)
@@ -634,7 +638,7 @@ async def generate_estimate(
             "pages_by_type": {},
             "pages_to_mark_stale": 0,
             "unknown_page_ids": [],
-            "provider": provider,
+            "provider": priced_with,
             "estimate": None,
             "note": note,
         }
@@ -656,7 +660,7 @@ async def generate_estimate(
         "pages_by_type": pages_by_type,
         "pages_to_mark_stale": len(plan.stale_ids),
         "unknown_page_ids": list(plan.unknown_page_ids),
-        "provider": provider,
+        "provider": priced_with,
         "estimate": estimate,
     }
 
