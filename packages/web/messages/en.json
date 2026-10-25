@@ -1310,7 +1310,42 @@
       "filesDescription": "Every file, grouped into the communities it depends on most, with a band for each strong link between communities. Hover or select a file to see exactly what it imports and what imports it."
     }
   },
+  "modelUpgrade": {
+    "eyebrow": "Add a model",
+    "title": "Write this documentation with a model",
+    "description": "Pages that explain how and why, chat in this dashboard, and written answers for your agent.",
+    "close": "Close",
+    "sourcesLabel": "Where the model comes from",
+    "cliSource": "{name} sign-in",
+    "keySource": "{name} key",
+    "localSource": "Local model ({name})",
+    "pasteSource": "Paste a key",
+    "hostedSource": "Hosted repowise",
+    "hostedNote": "model included, no key",
+    "hostedAction": "See plans",
+    "detected": {
+      "signedIn": "Found",
+      "env": "In env",
+      "saved": "Saved"
+    },
+    "pasteProvider": "Provider",
+    "pages": "{count, plural, one {# page to write} other {# pages to write}}",
+    "counting": "Counting pages",
+    "signedInNote": "Uses your {name} sign-in.",
+    "costNote": "About {cost} with this key, shown before anything runs.",
+    "pricing": "Pricing with this key",
+    "keyNote": "The price shows before anything runs.",
+    "localNote": "Runs on your machine. Start Ollama first.",
+    "pasteNote": "With a key, the price shows here first.",
+    "write": "Write the docs",
+    "sameAs": "Same as",
+    "startFailed": "Couldn't start writing the docs",
+    "badgeLabel": "Subsystem pages unwritten",
+    "badgeAction": "Write with a model",
+    "badgeTitle": "The subsystem pages are still generated from code structure. Write them with a model for the how and why."
+  },
   "chat": {
+    "addModel": "Add a model",
     "noProvider": "No chat provider is configured. Add an API key in <link>settings</link> to start asking questions.",
     "noProviderShort": "No chat provider is configured. Add an API key in <link>settings</link>.",
     "unverifiedFigure": "Not found in this turn's tool results",

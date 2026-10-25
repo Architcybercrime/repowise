@@ -59,6 +59,10 @@ class ProviderEntry(BaseModel):
     env_vars: list[str] = []
     #: One line on how to install or set it up.
     setup_hint: str = ""
+    #: What on this machine makes it usable: ``signed_in`` (a signed-in agent
+    #: CLI, reported only for ``?detect=true``), ``env`` (a key in the process
+    #: env or the repo's ``.repowise/.env``) or ``saved`` (a key stored here).
+    detected: Literal["signed_in", "env", "saved"] | None = None
 
 
 class EmbedderEntry(BaseModel):

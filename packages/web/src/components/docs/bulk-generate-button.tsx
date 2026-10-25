@@ -2,14 +2,8 @@
 
 import { Sparkles } from "lucide-react";
 import { Button } from "@repowise-dev/ui/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@repowise-dev/ui/ui/dialog";
-import { GenerationProgressWrapper } from "@/components/jobs/generation-progress-wrapper";
 import { BulkGenerateConfirm } from "./bulk-generate-confirm";
+import { BulkGenerateProgress } from "./bulk-generate-progress";
 import { useBulkGenerate } from "@/lib/hooks/use-bulk-generate";
 import { useTranslations } from "next-intl";
 
@@ -49,33 +43,10 @@ export function BulkGenerateButton({
         title={t("bulk.title")}
       />
 
-      <Dialog
-        open={bulk.jobId != null}
-        onOpenChange={(v) => {
-          if (!v) bulk.clearJob();
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("bulk.writing")}</DialogTitle>
-          </DialogHeader>
-          {bulk.jobId != null && (
-            <GenerationProgressWrapper
-              key={bulk.jobId}
-              jobId={bulk.jobId}
-              onDone={(outcome) => {
-                bulk.settle(outcome);
-                onGenerated?.();
-              }}
-              onRetry={() => {
-                bulk.clearJob();
-                bulk.open();
-              }}
-              onDismiss={bulk.clearJob}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      <BulkGenerateProgress
+        flow={bulk}
+        {...(onGenerated ? { onGenerated } : {})}
+      />
     </>
   );
 }

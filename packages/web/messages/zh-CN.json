@@ -1310,7 +1310,42 @@
       "filesDescription": "每个文件按它最依赖的社区分组，社区之间的每条强连接用一条带表示。把鼠标悬停或选中某个文件，即可看到它导入了什么、又被谁导入。"
     }
   },
+  "modelUpgrade": {
+    "eyebrow": "添加模型",
+    "title": "用模型撰写这份文档",
+    "description": "讲清原理与缘由的页面、在此仪表盘中对话，以及为你的智能体写好的回答。",
+    "close": "关闭",
+    "sourcesLabel": "模型来源",
+    "cliSource": "{name} 登录",
+    "keySource": "{name} 密钥",
+    "localSource": "本地模型（{name}）",
+    "pasteSource": "粘贴密钥",
+    "hostedSource": "托管版 repowise",
+    "hostedNote": "已含模型，无需密钥",
+    "hostedAction": "查看方案",
+    "detected": {
+      "signedIn": "已找到",
+      "env": "环境变量中",
+      "saved": "已保存"
+    },
+    "pasteProvider": "提供商",
+    "pages": "{count, plural, other {需撰写 # 个页面}}",
+    "counting": "正在统计页面",
+    "signedInNote": "使用你的 {name} 登录。",
+    "costNote": "使用此密钥约需 {cost}，运行前会先显示。",
+    "pricing": "正在按此密钥估价",
+    "keyNote": "运行前会先显示价格。",
+    "localNote": "在你的机器上运行。请先启动 Ollama。",
+    "pasteNote": "有了密钥，价格会先在这里显示。",
+    "write": "撰写文档",
+    "sameAs": "等同于",
+    "startFailed": "无法开始撰写文档",
+    "badgeLabel": "子系统页面未撰写",
+    "badgeAction": "用模型撰写",
+    "badgeTitle": "子系统页面仍由代码结构生成。用模型撰写，讲清原理与缘由。"
+  },
   "chat": {
+    "addModel": "添加模型",
     "noProvider": "尚未配置对话提供商。请先在<link>设置</link>中添加 API 密钥，然后就可以开始提问了。",
     "noProviderShort": "尚未配置对话提供商。请先在<link>设置</link>中添加 API 密钥。",
     "unverifiedFigure": "未在本轮工具结果中找到",
