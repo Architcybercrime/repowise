@@ -191,6 +191,23 @@ def test_registration_serving_another_repo_is_a_warn(tmp_path: Path, monkeypatch
     assert row.fix == "repowise agents add --target=claude-code --scope=project"
 
 
+@pytest.mark.parametrize(
+    ("settings", "level"), [("{not json", "warn"), (None, "ok")], ids=["unparseable", "absent"]
+)
+def test_unregistered_entry_warns_only_when_settings_cannot_be_parsed(
+    tmp_path: Path, monkeypatch, settings: str | None, level: str
+) -> None:
+    from repowise.cli.editor_integrations import claude_config
+
+    settings_path = tmp_path / "settings.json"
+    if settings is not None:
+        settings_path.write_text(settings, encoding="utf-8")
+    monkeypatch.setattr(claude_config, "_claude_code_settings_path", lambda: settings_path)
+    monkeypatch.setattr(integrations, "_registered_mcp_entry", lambda: None)
+    row, wedged = integrations._claude_registration_check(tmp_path)
+    assert (row.id, row.level, row.ok, wedged) == ("claude-code-mcp-entry", level, True, False)
+
+
 def test_json_rows_carry_id_level_and_fix(tmp_path: Path, no_mcp_launch) -> None:
     result = CliRunner().invoke(
         doctor_command, [str(_git_repo(tmp_path)), "--no-workspace", "--format", "json"]

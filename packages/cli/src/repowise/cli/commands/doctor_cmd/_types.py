@@ -1,4 +1,4 @@
-"""Shared value types and tiny formatting helpers for ``repowise doctor``."""
+"""The doctor row type, its ok/warn/fail level, and the level's table markup."""
 
 from __future__ import annotations
 

@@ -120,8 +120,8 @@ def _registered_mcp_entry() -> dict | None:
     return _stored_repowise_entry(_claude_code_settings_path())
 
 
-def _unregistered_detail() -> str:
-    """Why there is no entry: absent, or present but unreadable.
+def _unregistered_detail() -> tuple[str, bool]:
+    """``(detail, unreadable)``: why there is no entry, absent or present but unreadable.
 
     Those have different fixes, and collapsing them tells a user with a
     hand-broken settings.json to run ``init``, which will fail on the same
@@ -137,8 +137,8 @@ def _unregistered_detail() -> str:
         try:
             load_existing_config(settings_path)
         except Exception:
-            return f"could not parse {settings_path}"
-    return "not registered (repowise init registers it)"
+            return f"could not parse {settings_path}", True
+    return "not registered (repowise init registers it)", False
 
 
 @_functools.cache
@@ -202,10 +202,9 @@ def _claude_registration_check(
     try:
         entry = _registered_mcp_entry()
         if entry is None:
-            detail = _unregistered_detail()
             # An unparseable settings file is worth a look; no entry at all is
             # a choice (another agent, or none).
-            unreadable = detail.startswith("could not parse")
+            detail, unreadable = _unregistered_detail()
             return _check(name, True, detail, check_id=check_id, warn=unreadable), False
 
         problems: list[str] = []
