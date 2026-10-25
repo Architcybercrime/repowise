@@ -122,9 +122,26 @@ def describe_agents(repo_path: Path | None = None) -> list[dict]:
                 "present": present,
                 "method": method.id if method is not None else None,
                 "registrations": [r.as_dict() for r in registrations],
+                "config_files": _config_files(target, repo_path),
             }
         )
     return rows
+
+
+def _config_files(target: AgentTarget, repo_path: Path | None) -> dict[str, list[str]]:
+    """The files ``agents add`` writes for *target*, per scope it supports.
+
+    Best-effort like the probes above: a scope whose paths cannot be named is
+    left out instead of failing the listing.
+    """
+    files: dict[str, list[str]] = {}
+    for scope in (Scope.PROJECT, Scope.USER):
+        try:
+            if target.supports_scope(scope):
+                files[scope.value] = list(target.describe_paths(scope, repo_path=repo_path))
+        except Exception:
+            continue
+    return files
 
 
 def default_selection(rows: list[dict]) -> set[str]:
