@@ -25,6 +25,7 @@ import logging
 import os
 import threading
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ from repowise.core.providers.embedding.registry import (
     list_embedders,
 )
 from repowise.core.providers.llm.resolve import (
+    GLOBAL_CONFIG_FILENAME,
     UNSET,
     LLMSelection,
     global_config_path,
@@ -72,6 +74,8 @@ PROVIDER_CATALOG: list[dict[str, Any]] = [
         "accepts_base_url": bool(spec.base_url_envs),
         # Can point at a local OpenAI-compatible server and run with no key.
         "local_server": spec.keyless_on_loopback,
+        # A model that runs on this machine (not an agent CLI).
+        "local_model": spec.local and not spec.agent,
         # What a user sets to make it usable, and how to install it.
         "env_vars": list(spec.required_envs),
         "setup_hint": spec.setup_hint,
@@ -308,19 +312,72 @@ def resolve_for_repo(
     )
 
 
+def _logged_in(identity: Any) -> bool:
+    """One CLI's login check; a check that breaks counts as not signed in."""
+    try:
+        return bool(identity.is_logged_in())
+    except Exception:
+        logger.debug("Login check for %s failed", identity.slug, exc_info=True)
+        return False
+
+
+def _signed_in_agent_providers() -> set[str]:
+    """Catalog providers whose agent CLI is installed and signed in here.
+
+    Each check is a short subprocess (the CLI's own login query), so they run
+    side by side.
+    """
+    from repowise.core.agents.identity import get_identity
+
+    agents = {
+        p["id"]: identity
+        for p in PROVIDER_CATALOG
+        if (agent := PROVIDER_SPECS[p["id"]].agent) and (identity := get_identity(agent))
+    }
+    if not agents:
+        return set()
+    with ThreadPoolExecutor(max_workers=len(agents)) as pool:
+        signed_in = list(pool.map(_logged_in, agents.values()))
+    return {name for name, ok in zip(agents, signed_in, strict=True) if ok}
+
+
+def _detected_source(
+    provider_id: str, repo_path: str | Path | None, signed_in: set[str] | None
+) -> str | None:
+    """What on this machine makes *provider_id* usable without setup.
+
+    ``signed_in``: its agent CLI is signed in (only checked when *signed_in*
+    is given). ``env``: a key in the process env or the repo's
+    ``.repowise/.env``. ``saved``: a key stored on this server.
+    """
+    if PROVIDER_SPECS[provider_id].agent:
+        return "signed_in" if signed_in is not None and provider_id in signed_in else None
+    if not _CATALOG_BY_ID[provider_id]["requires_key"]:
+        return None
+    source = resolve_api_key(provider_id, repo_path)[1]
+    if source is None:
+        return None
+    return "saved" if source == GLOBAL_CONFIG_FILENAME else "env"
+
+
 def list_provider_status(
     repo_id: str | None = None,
     repo_path: str | Path | None = None,
+    *,
+    detect: bool = False,
 ) -> dict[str, Any]:
     """Return provider catalog + the active selection for the repo.
 
     With ``repo_path`` the active provider/model/base URL are what that repo's
     chat will use, each with the layer it came from (``provenance``). A
     configured model missing from the static catalog is added to that
-    provider's ``models`` so the picker can show it.
+    provider's ``models`` so the picker can show it. Each provider's
+    ``detected`` names a key found for it; with *detect* it also names a
+    signed-in agent CLI, which costs one subprocess per agent provider.
     """
     selection = resolve_for_repo(repo_id, repo_path)
     active_id, model = selection.provider, selection.model
+    signed_in = _signed_in_agent_providers() if detect else None
 
     providers = []
     for p in PROVIDER_CATALOG:
@@ -339,8 +396,10 @@ def list_provider_status(
                 "requires_key": p["requires_key"],
                 "accepts_base_url": p["accepts_base_url"],
                 "local_server": p["local_server"],
+                "local_model": p["local_model"],
                 "env_vars": p["env_vars"],
                 "setup_hint": p["setup_hint"],
+                "detected": _detected_source(p["id"], repo_path, signed_in),
             }
         )
 

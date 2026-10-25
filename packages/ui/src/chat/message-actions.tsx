@@ -136,7 +136,7 @@ function MessageEditForm({
         <button
           type="submit"
           aria-label="Fork and resend"
-          className="inline-flex h-8 items-center rounded-full bg-[var(--color-accent-fill)] px-3 text-xs font-medium text-[var(--color-text-on-accent)] hover:bg-[var(--color-accent-fill-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-root)]"
+          className="inline-flex h-8 items-center rounded-full bg-[var(--color-action-primary)] px-3 text-xs font-medium text-[var(--color-text-on-action)] hover:bg-[var(--color-action-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-root)]"
         >
           Send
         </button>
