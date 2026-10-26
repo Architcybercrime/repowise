@@ -898,3 +898,17 @@ def test_response_models_name_every_builder_field():
         (ZoomRelation, ZoomRelationResponse),
     ):
         assert {f.name for f in fields(data)} == set(model.model_fields), model.__name__
+
+
+def test_only_production_code_reaching_an_editor_host_makes_an_extension():
+    view = _boundary_view()
+    host = _node("external:vscode", language="external")
+    from_test = ArchEdge("tests/test_store.py", "external:vscode", "imports", "forward", 1.0, 1.0)
+    view = replace(view, nodes=[*view.nodes, host], edges=[*view.edges, from_test])
+    root = next(c for c in assemble_zoom_map(view).containers if c.path == "")
+    assert root.kind == "cli"
+
+    from_code = replace(from_test, source="app/store.py")
+    view = replace(view, edges=[*view.edges, from_code])
+    root = next(c for c in assemble_zoom_map(view).containers if c.path == "")
+    assert root.kind == "extension"
