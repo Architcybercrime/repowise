@@ -28,7 +28,6 @@ export interface PreviewItem {
 
 /** Composition bar order, worst first; Excellent folds into Good (one green). */
 export const COMPOSITION_BANDS = ["at_risk", "needs_work", "fair", "good"] as const;
-type CompositionBand = (typeof COMPOSITION_BANDS)[number];
 
 export interface CardPreview {
   /** Top children by `sibling_rank`, at most `PREVIEW_MAX_ITEMS`. */
