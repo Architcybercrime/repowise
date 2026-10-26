@@ -240,7 +240,7 @@ six months of bug fixes ([method](../architecture/code-health.md#62-validation-a
 - ROC AUC 0.737 (95% CI 0.683 to 0.787) across 21 repositories, 9 languages and 2,826
   files; held out on PROMISE jEdit, 0.761 and 0.776.
 - Against a commercial code-health tool on the same files, the score leads on
-  effort-aware ranking (Popt +0.075, p = 0.001, under all three bug labels); AUC and
+  effort-aware ranking (Popt +0.075, p = 0.001, significant under all three bug labels); AUC and
   precision are ties.
 - Lines of code alone scores AUC 0.742, a tie: the gain is in ordering a fixed review
   budget and saying why. Within size quartiles AUC is 0.525 to 0.718.

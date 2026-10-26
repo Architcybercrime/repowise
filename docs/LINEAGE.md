@@ -93,7 +93,7 @@ literature, not our convenience:
 (2,826 files) was scored at a fixed commit and checked against the next six months of
 bug fixes: ROC AUC 0.737 [0.683, 0.787], and 0.76 to 0.78 on the held-out jEdit
 releases. Against CodeScene on the 2,735 files both tools scored, Repowise leads on
-effort-aware ranking (Popt +0.075, p = 0.001) under all three bug labels.
+effort-aware ranking (Popt +0.075, p = 0.001), significant under all three bug labels.
 [BENCHMARKS.md](BENCHMARKS.md#5-code-health-predicts-defects)
 
 ---

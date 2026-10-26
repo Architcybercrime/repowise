@@ -415,9 +415,9 @@ Headline results (jEdit 4.0 / 4.1 held out with no git history, structural marke
 - **66 repositories, 17,134 files.** Popt 0.552 vs 0.448 for file size; size ranks
   slightly higher on AUC (0.764 vs 0.744, keyword gap 0.020, 95% CI -0.005 to 0.044).
   History adds 0.052 AUC over code shape alone (95% CI 0.034 to 0.074), so it stays.
-- **Paired vs the commercial tool:** Popt lead +0.075 (p = 0.001, 2,735 files, all
-  three bug labels); size-normalized density 2.18x vs 0.56x (p = 0.003); AUC 0.731 vs 0.705 (p = 0.054); raw density 16.9x vs 14.2x
-  (p = 0.65); precision 0.580 vs 0.636 (p = 0.64); partial rho beyond size -0.148 vs
+- **Paired vs the commercial tool:** Popt lead +0.075 (2,735 files; p = 0.001 on
+  keyword labels, significant under all three); size-normalized density 2.18x vs 0.56x
+  (p = 0.003); AUC 0.731 vs 0.705 (p = 0.054); raw density 16.9x vs 14.2x (p = 0.65); precision 0.580 vs 0.636 (p = 0.64); partial rho beyond size -0.148 vs
   -0.137. It flags 27 files at its most severe level where Repowise flags 132 At risk (a
   more conservative point); its published -0.58 correlation with issue-resolution time
   (proprietary Jira data) was -0.09 (95% CI -0.19 to +0.14) on open GitHub data, and six

@@ -323,8 +323,9 @@ queries and I/O in loops are traced across functions and files.
 
 The score is checked against real bugs. Head to head with CodeScene on 20 open-source
 projects, Repowise's ranking reaches the files that later need bug fixes with less code
-read (**Popt +0.075**, p = 0.001, under all three bug labels). It also checks itself
-on your repository after every index: *"16 of the 20 lowest-health files had a bug fix in the last 6 months, 3.3x the 24% baseline."*
+read (**Popt +0.075**, p = 0.001, significant under all three bug labels). It also
+checks itself on your repository after every index: *"16 of the 20 lowest-health files
+had a bug fix in the last 6 months, 3.3x the 24% baseline."*
 
 Then it names the fix: **Extract Method**, **Extract Class**, **Move Method**,
 **Split File** or **Break Cycle**, with the exact symbols that move, ranked so a fix
