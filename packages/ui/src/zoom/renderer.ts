@@ -383,7 +383,7 @@ export class ZoomRenderer {
     }
     // Keep ticking (without drawing) while a fly runs or a reduced frame waits
     // for the settle repaint; an idle canvas schedules nothing.
-    if (animating || this.reduced) this.rafId = requestAnimationFrame(this.frame);
+    if (animating || this.reduced) this.schedule();
   };
 
   /** Step a running fly to time `t0`; true while it still has frames to go. */

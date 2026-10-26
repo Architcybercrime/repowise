@@ -123,6 +123,8 @@ describe("ZoomRenderer loop", () => {
     renderer.setCamera({ ...cam, scale: cam.scale * 1.5 });
     const pick = vi.spyOn(renderer, "pickEntry");
     tick(); // draws the zoom, then queues a pick against it
+    // One loop: the reduced frame's tick and the re-pick share a single frame.
+    expect(frames).toHaveLength(1);
     tick();
     expect(pick).toHaveBeenCalledTimes(1);
     expect(hovers.length).toBe(before + 1);
