@@ -48,7 +48,6 @@ const DISPLAY: Record<string, string> = {
   torch: "PyTorch",
   tensorflow: "TensorFlow",
   httpx: "HTTPX",
-  openai: "OpenAI",
   aiohttp: "aiohttp",
   grpc: "gRPC",
   grpcio: "gRPC",
