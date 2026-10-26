@@ -2214,6 +2214,34 @@ async def test_scope_narrows_every_figure_to_production(setup_mcp, session, popu
 
 
 @pytest.mark.asyncio
+async def test_production_scope_is_the_file_set_production_average_reads(
+    setup_mcp, session, populated_db
+):
+    """Tooling, vendored and generated files leave ``scope="production"`` as
+    they leave ``production_average``, so the narrowed headline equals it."""
+    from repowise.core.persistence.crud import save_health_metrics
+    from repowise.server.mcp_server import get_health
+
+    def row(path: str, score: float, origin: str) -> dict:
+        return {"file_path": path, "score": score, "nloc": 100, "code_origin": origin}
+
+    await save_health_metrics(
+        session,
+        populated_db,
+        [
+            row("src/auth/service.py", 4.0, "production"),
+            row("scripts/release.py", 10.0, "tooling"),
+            row("vendor/lib.js", 10.0, "vendored"),
+            row("src/gen/api_pb2.py", 10.0, "generated"),
+        ],
+    )
+    everything = (await get_health())["kpis"]
+    assert (everything["average_health"], everything["production_average"]) == (8.5, 4.0)
+    production = (await get_health(scope="production"))["kpis"]
+    assert (production["average_health"], production["file_count"]) == (4.0, 1)
+
+
+@pytest.mark.asyncio
 async def test_counts_reads_the_code_shape_half_across_the_response(
     setup_mcp, session, populated_db
 ):

@@ -1,13 +1,15 @@
 """What health scores, and the names of the halves it can report on.
 
-Production/test narrowing itself is a column read (``HealthFileMetric.is_test``,
-stamped from the shared path classifier), so only the vocabulary lives here.
+The ``production`` half is the file set ``production_average`` and
+``worst_performer`` read (``ranking.split_in_scope``), so a narrowed reading,
+its trend and the headline beside it agree.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from functools import cache
-from typing import Literal
+from typing import Any, Literal
 
 HealthScope = Literal["all", "production"]
 DEFAULT_SCOPE: HealthScope = "all"
@@ -48,3 +50,15 @@ def scores_language(language: str | None) -> bool:
 def parse_scope(value: str | None) -> HealthScope:
     """Normalise a caller's scope, falling back to the default on anything else."""
     return value if value in SCOPES else DEFAULT_SCOPE  # type: ignore[return-value]
+
+
+def rows_in_scope(scope: str | None, rows: Iterable[Any]) -> list[Any]:
+    """*rows* kept by *scope*: all of them, or only production code for
+    ``production`` (no tests, tooling, build, vendored, generated or docs
+    example files). Unscored rows stay, so a caller still counts them."""
+    if parse_scope(scope) != "production":
+        return list(rows)
+    # Deferred: ranking pulls in scoring and the queue, which this module stays out of.
+    from .ranking import split_in_scope
+
+    return split_in_scope(rows)[0]

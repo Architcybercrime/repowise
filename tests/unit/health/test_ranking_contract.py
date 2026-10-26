@@ -20,6 +20,7 @@ from repowise.core.analysis.health.ranking import (
     worst_in_scope,
     worst_metric,
 )
+from repowise.core.analysis.health.scope import rows_in_scope
 from repowise.core.analysis.health.scoring import SCORE_FLOOR, compute_kpis
 
 
@@ -196,6 +197,8 @@ def test_production_average_covers_the_files_worst_performer_is_picked_from() ->
     kpis = compute_kpis(rows, set())
     assert kpis["average_health"] == 8.8
     assert (kpis["production_average"], kpis["production_file_count"]) == (4.0, 1)
+    assert [r["file_path"] for r in rows_in_scope("production", rows)] == ["src/app.py"]
+    assert rows_in_scope("all", rows) == rows
     no_production = compute_kpis(rows[:4], set())
     assert (no_production["production_average"], no_production["production_file_count"]) == (
         None,
