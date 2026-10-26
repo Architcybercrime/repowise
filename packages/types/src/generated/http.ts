@@ -5265,6 +5265,27 @@ export interface WorkspaceUnresolvedLink {
   detail?: string | null;
 }
 
+export interface ZoomContainerResponse {
+  id: string;
+  name: string;
+  path?: string;
+  kind: string;
+  technologies?: string[];
+  file_count?: number;
+}
+
+export interface ZoomExternalResponse {
+  id: string;
+  name: string;
+  display_name: string;
+  kind: string;
+  category: string;
+  io_kind?: string | null;
+  ecosystem?: string;
+  file_count?: number;
+  edge_count?: number;
+}
+
 export interface ZoomMapResponse {
   root_id: string;
   project_name: string;
@@ -5274,6 +5295,9 @@ export interface ZoomMapResponse {
   truncated?: boolean;
   nodes: ZoomNodeResponse[];
   relations: ZoomRelationResponse[];
+  externals?: ZoomExternalResponse[];
+  external_relations?: ZoomRelationResponse[];
+  containers?: ZoomContainerResponse[];
 }
 
 export interface ZoomMetricsResponse {
@@ -5305,6 +5329,8 @@ export interface ZoomNodeResponse {
   is_dead?: boolean;
   is_test?: boolean;
   on_flow?: boolean;
+  technologies?: string[];
+  container_ids?: string[];
 }
 
 export interface ZoomRelationResponse {
