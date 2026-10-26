@@ -95,6 +95,13 @@ describe("framing helpers", () => {
     expect(viewportCoverage(cam, VP, rect)).toBeCloseTo(0.8);
   });
 
+  it("frameRect fits a tall rect by its height", () => {
+    const rect = { x: 0.2, y: 0.1, w: 0.05, h: 0.4 };
+    const cam = frameRect(VP, rect, 0.8);
+    expect(cam.scale).toBeCloseTo((800 * 0.8) / 0.4);
+    expect(viewportCoverage(cam, VP, rect)).toBeCloseTo(0.8);
+  });
+
   it("frameRect centres the rect in the clear area beside a covering sheet", () => {
     const vp: Viewport = { w: 1000, h: 800, insetRight: 300 };
     const rect = { x: 0.2, y: 0.4, w: 0.1, h: 0.05 };
@@ -110,6 +117,15 @@ describe("framing helpers", () => {
   it("frameRect matches the old square fit for a square rect", () => {
     const rect = { x: 0, y: 0, w: 0.2, h: 0.2 };
     expect(frameRect(VP, rect, 0.8).scale).toBeCloseTo((800 * 0.8) / 0.2);
+  });
+
+  it("frameRect keeps the health map's disc framing: no inset, square rect, fill 0.9", () => {
+    // use-map-camera frames a disc (world 0..1000) as its bounding square.
+    // Pinned to the values frameRect returned before the inset-aware fit.
+    const disc = { x: 300 - 40, y: 420 - 40, w: 80, h: 80 };
+    expect(frameRect(VP, disc, 0.9)).toEqual({ cx: 300, cy: 420, scale: (800 * 0.9) / 80 });
+    // and the default fill is unchanged
+    expect(frameRect(VP, disc).scale).toBeCloseTo((800 * 0.8) / 80);
   });
 
   it("clampScale bounds both ends", () => {

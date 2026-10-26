@@ -159,9 +159,23 @@ function stackRects(n: number, more: boolean, parentH: number): { cards: Rect[];
   return { cards, more: more ? { x, y, w, h: h * MORE_H } : null };
 }
 
+/**
+ * A lane in three stages: rank the parent's externals, stack the strongest
+ * into the rail, then route each child's links to its card. `laneWithout`
+ * runs the same stages over fewer links, so a trimmed lane re-stacks and
+ * re-routes exactly as a fresh one would.
+ */
 function buildLane(source: LaneInputs): ExternalLane {
-  const { rels, parentRect, externals, worldRects } = source;
-  const ranked = rankExternals(rels, externals);
+  const ranked = rankExternals(source.rels, source.externals);
+  const { cards, more } = stackCards(ranked, source.parentRect);
+  return { cards, more, ...routeLinks(source, cards), inputs: source };
+}
+
+/** The strongest externals as cards stacked in the rail, the rest as a chip. */
+function stackCards(
+  ranked: readonly { external: ZoomExternal; edgeCount: number }[],
+  parentRect: Rect,
+): Pick<ExternalLane, "cards" | "more"> {
   const shown = ranked.slice(0, EXTERNALS_MAX_DRAWN);
   const hidden = ranked.length - shown.length;
   const stack = stackRects(shown.length, hidden > 0, (parentRect.h / parentRect.w) * LANE_UNITS);
@@ -175,7 +189,14 @@ function buildLane(source: LaneInputs): ExternalLane {
     count: `${edgeCount} ${edgeCount === 1 ? "import" : "imports"}`,
     countShort: String(edgeCount),
   }));
+  return { cards, more: stack.more ? { rect: stack.more, label: `+${hidden} more` } : null };
+}
 
+/** Route each child's link to its drawn card, indexed both ways, strongest first. */
+function routeLinks(
+  { rels, parentRect, worldRects }: LaneInputs,
+  cards: readonly ExternalCard[],
+): Pick<ExternalLane, "bySource" | "byTarget"> {
   const byId = new Map(cards.map((c) => [c.id, c] as const));
   // Route to each card's right edge as a sliver: the router picks the side
   // facing the source, and a short wide card would otherwise take a link on
@@ -215,14 +236,7 @@ function buildLane(source: LaneInputs): ExternalLane {
   const strongest = (a: ExternalLink, b: ExternalLink): number => b.edgeCount - a.edgeCount;
   for (const list of bySource.values()) list.sort(strongest);
   for (const list of byTarget.values()) list.sort(strongest);
-
-  return {
-    cards,
-    more: stack.more ? { rect: stack.more, label: `+${hidden} more` } : null,
-    bySource,
-    byTarget,
-    inputs: source,
-  };
+  return { bySource, byTarget };
 }
 
 /**

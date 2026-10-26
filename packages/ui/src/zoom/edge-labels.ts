@@ -84,16 +84,20 @@ export function pairLabels(edges: readonly RoutedEdge[]): PairLabel[] {
     pair.verbs.set(e.label, (pair.verbs.get(e.label) ?? 0) + e.edgeCount);
   }
   const out: PairLabel[] = [];
-  for (const [key, { route, verbs }] of byPair) {
-    const sorted = [...verbs.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    out.push({
-      key,
-      route,
-      text: sorted.map(([verb, n]) => `${verb} ${n.toLocaleString("en-US")}`).join(" · "),
-      weight: sorted.reduce((s, [, n]) => s + n, 0),
-    });
-  }
+  for (const [key, { route, verbs }] of byPair) out.push({ key, route, ...verbSummary(verbs) });
   return out.sort((a, b) => b.weight - a.weight || (a.key < b.key ? -1 : 1));
+}
+
+/**
+ * One pair's verb counts as label text, strongest verb first (ties by name):
+ * "calls 13 · imports 5", with the counts' total as the pair's weight.
+ */
+export function verbSummary(verbs: ReadonlyMap<string, number>): { text: string; weight: number } {
+  const sorted = [...verbs.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return {
+    text: sorted.map(([verb, n]) => `${verb} ${n.toLocaleString("en-US")}`).join(" · "),
+    weight: sorted.reduce((s, [, n]) => s + n, 0),
+  };
 }
 
 interface PlacedLabel {

@@ -5,9 +5,11 @@ import { EDGE_MAX_PER_PARENT } from "../../src/zoom/constants";
 import { drawScene, type DrawOptions } from "../../src/zoom/draw-tree";
 import {
   bucketExternalRelations,
+  buildExternalLanes,
   EXTERNALS_MAX_DRAWN,
   focusLanes,
   LANE_UNITS,
+  laneWithout,
   RAIL_FRAC,
 } from "../../src/zoom/externals";
 import { buildScene } from "../../src/zoom/scene";
@@ -163,6 +165,15 @@ describe("rails along the focus chain", () => {
         seen.add(c.id);
       }
     }
+  });
+
+  it("trims a rail to exactly the lane a fresh build over the remaining externals gives", () => {
+    const lane = scene.externalLanes.get(root.id)!;
+    const shown = new Set(lane.cards.slice(0, 2).map((c) => c.id));
+    const { rels, externals, worldRects } = lane.inputs;
+    const rest = rels.filter((r) => !shown.has(r.target_id));
+    const fresh = buildExternalLanes(new Map([[root.id, rest]]), externals, worldRects).get(root.id);
+    expect(laneWithout(lane, shown)).toEqual(fresh);
   });
 
   it("builds a trimmed rail once per focus, not per call", () => {

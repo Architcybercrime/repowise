@@ -6,6 +6,7 @@ import {
   edgeLabelLayout,
   layoutEdgeLabels,
   pairLabels,
+  verbSummary,
 } from "../../src/zoom/edge-labels";
 import type { EdgeRoute, RoutedEdge } from "../../src/zoom/edges";
 
@@ -33,6 +34,13 @@ describe("bezier helpers", () => {
     const nrm = bezierNormal(r, 0.5);
     expect(Math.hypot(nrm.x, nrm.y)).toBeCloseTo(1);
     expect(nrm.x).toBeCloseTo(0);
+  });
+});
+
+describe("verbSummary", () => {
+  it("orders verbs by count, ties by name, and sums the weight", () => {
+    const verbs = new Map([["imports", 5], ["calls", 1300], ["uses", 5]]);
+    expect(verbSummary(verbs)).toEqual({ text: "calls 1,300 · imports 5 · uses 5", weight: 1310 });
   });
 });
 
