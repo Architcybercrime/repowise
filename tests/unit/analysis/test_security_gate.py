@@ -12,7 +12,7 @@ import subprocess
 import pytest
 
 from repowise.core.analysis import security_gate
-from repowise.core.analysis.changed_lines import changed_lines
+from repowise.core.analysis.changed_lines import changed_lines, split_commit_patches
 from repowise.core.analysis.doc_drift.render import render_sarif as doc_drift_sarif
 from repowise.core.analysis.security_gate import (
     evaluate,
@@ -166,6 +166,33 @@ def test_a_secret_that_predates_the_change_is_not_blamed_on_it(repo):
     _write(repo, "cfg.py", f"AWS = '{KEY}'\nX = 2\n")
     _commit(repo, "touch another line")
     assert _scan(repo).findings == []
+
+
+def test_a_nul_byte_inside_a_patch_does_not_split_its_commit(repo):
+    # Past git's 8000-byte binary sniff, so the NUL lines appear in the patch.
+    pad = "# pad\n" * 1500
+    _write(repo, "sep.ts", f'{pad}const SEP = "\0";\nexport {{ SEP }};\n')
+    _write(repo, "use.ts", "export const n = 1;\n")  # a file after it in the same patch
+    _commit(repo, "add a NUL line")
+    _write(repo, "sep.ts", f"{pad}export {{}};\n")
+    _commit(repo, "remove it")
+    _write(repo, "cfg.py", f"AWS = '{KEY}'\n")
+    _commit(repo, "add key")
+    _write(repo, "cfg.py", "AWS = None\n")
+    _commit(repo, "remove key")
+    scan = _scan(repo)
+    assert scan.commits_scanned == 4
+    assert _kinds(scan) == [("aws_access_key", 1, True)]
+
+
+def test_split_commit_patches_starts_a_commit_only_at_a_line_start_commit_id():
+    sha1, sha256 = "a" * 40, "b" * 64
+    raw = f"\0{sha1}\n\n+x = '\0{sha1}'\n+\0;\n\0{sha256}\n\n-y\n\0{sha1}"
+    assert split_commit_patches(raw) == [
+        (sha1, f"\n+x = '\0{sha1}'\n+\0;\n"),
+        (sha256, "\n-y\n"),
+        (sha1, ""),
+    ]
 
 
 def test_code_smells_in_intermediate_commits_do_not_count(repo):
