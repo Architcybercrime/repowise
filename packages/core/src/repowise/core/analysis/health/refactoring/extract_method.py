@@ -124,7 +124,7 @@ from .anchors import Scope, anchor_plan, file_source, function_scope
 from .declarative import declarative_flat
 from .helper_naming import ScopeNames, placeholder_names
 from .models import RefactoringContext, RefactoringSuggestion
-from .narrowing import narrowed, narrowings
+from .narrowing import narrowed, narrowings, property_narrowings, span_guards
 from .registry import RefactoringDetector, register
 
 if TYPE_CHECKING:
@@ -235,6 +235,7 @@ class ExtractMethodDetector(RefactoringDetector):
         prefixes: dict[int, Any] = {}
         refused: set[str] = set()
         candidates = find_extractions(analysis, lmap, receiver, prefixes, refused)
+        candidates = _writable_spans(analysis, candidates, ctx.language, refused)
         _mark_stage_refused(matched, frozenset(refused))
         best = _choose(analysis, candidates, markers)
         staged = _staged(analysis, best, lmap, receiver, ctx.language, matched, prefixes)
@@ -468,7 +469,12 @@ def _staged(
     if max_returns is None or analysis.ccn < _STAGE_MIN_CCN:
         return None
     plan = find_stages(analysis, lmap, receiver, max_returns=max_returns, prefixes=prefixes)
-    _mark_stage_refused(findings, plan.refused)
+    refused = set(plan.refused)
+    # One stage no helper can be written for refuses the split: the others compose with it.
+    kept = _writable_spans(analysis, plan.stages, language, refused)
+    if len(kept) < len(plan.stages):
+        plan = replace(plan, stages=())
+    _mark_stage_refused(findings, frozenset(refused))
     if not plan.stages or (best is not None and plan.ccn_removed < 2 * best.ccn_removed):
         return None
     if not all(_worth_extracting(analysis, x, markers) for x in plan.stages):
@@ -635,7 +641,9 @@ def _symbol_fields(extraction: Extraction, receiver: Receiver | None) -> dict[st
     hazard = _receiver_hazard(receiver, uses, assigns)
     kind: str | None = None
     if receiver is not None and hazard != "receiver_unbound":
-        kind = "method" if receiver.implicit or uses else "function"
+        # An implicit receiver with no name (an Apex static method) has no
+        # instance: its bare names are static fields, and its helper is static.
+        kind = "method" if receiver.names and (receiver.implicit or uses) else "function"
     name = min(receiver.names) if kind == "method" and receiver is not None else None
     fields: dict[str, Any] = {
         "new_symbol": {
@@ -700,6 +708,7 @@ def _render_fields(
             out_rebound=rebound,
             typed_host=fn_node is not None
             and fn_node.child_by_field_name("return_type") is not None,
+            throws_clause=_throws_clause(fn_node, language),
         )
     )
     rendered = {
@@ -709,8 +718,9 @@ def _render_fields(
         "signature_text": texts.signature if texts else None,
         "return_text": texts.returns if texts else None,
     }
-    if texts and texts.notes:
-        rendered["notes"] = list(texts.notes)
+    notes = [*(texts.notes if texts else ()), *_undeclared_outputs_note(analysis, extraction)]
+    if notes:
+        rendered["notes"] = notes
     span = {"start": extraction.start_line, "end": extraction.end_line}
     call = texts.call if texts else None
     return {
@@ -718,6 +728,40 @@ def _render_fields(
         "new_symbol": rendered,
         "call_site": {"replace_span": span, "new_text": call} if call else None,
     }
+
+
+def _throws_clause(fn_node: Any, language: str | None) -> str | None:
+    """A Java method's ``throws`` clause, for the helper to repeat."""
+    if language != "java" or fn_node is None:
+        return None
+    return next((c.text.decode() for c in fn_node.named_children if c.type == "throws"), None)
+
+
+def _undeclared_outputs_note(analysis: FunctionAnalysis, extraction: Extraction) -> list[str]:
+    """A note for the outputs the function declares before the span (``let
+    x: T;``) and the span only assigns: the helper needs its own declaration
+    or its first assignment names nothing."""
+    if not extraction.returns:
+        return []
+    inside = range(extraction.start_line, extraction.end_line + 1)
+    # ``declares`` also marks a declarator spanning lines, where ``declared_at`` is None.
+    declared = [
+        (d.var, d.line in inside)
+        for d in analysis.def_use.definitions
+        if d.declared_at is not None or d.declares
+    ]
+    names = [
+        r
+        for r in extraction.returns
+        if r not in extraction.params and (r, False) in declared and (r, True) not in declared
+    ]
+    if not names:
+        return []
+    what = "it" if len(names) == 1 else "them"
+    return [
+        f"Declare {', '.join(names)} at the top of the helper, as the function does: "
+        f"the lines assign {what} without declaring {what}."
+    ]
 
 
 def _declared_types(
@@ -750,6 +794,87 @@ def _declared_types(
     return found
 
 
+#: Why a span was refused: a test the span runs under narrows a value it reads
+#: in a way no helper parameter keeps (a property path, a name the function
+#: does not bind), so the lifted lines stop type-checking.
+NARROWING_LOST = "narrowing_lost"
+#: Why a span was refused: it assigns a name declared outside it that it
+#: neither takes nor returns, so the helper's assignment names nothing.
+OUTER_DECLARATION = "outer_declaration"
+
+
+def _writable_spans(
+    analysis: FunctionAnalysis,
+    spans: list[Extraction] | tuple[Extraction, ...],
+    language: str | None,
+    refused: set[str],
+) -> list[Extraction]:
+    """*spans* without those whose helper cannot be written as planned; each
+    drop adds its reason to *refused*. Without a tree no span was cut from one."""
+    if analysis.fn_node is None:
+        return list(spans)
+    def_lines = _def_lines(analysis)
+    kept = []
+    for x in spans:
+        reason = _unwritable(analysis, x, language, def_lines)
+        if reason is None:
+            kept.append(x)
+        else:
+            refused.add(reason)
+    return kept
+
+
+def _unwritable(
+    analysis: FunctionAnalysis,
+    x: Extraction,
+    language: str | None,
+    def_lines: dict[str, list[int]],
+) -> str | None:
+    """Why *x*'s helper cannot be written as planned, None when it can."""
+    if _assigns_outer_declaration(analysis, x):
+        return OUTER_DECLARATION
+    if language in _NARROWING_LANGUAGES and _loses_narrowing(analysis, x, language, def_lines):
+        return NARROWING_LOST
+    return None
+
+
+def _assigns_outer_declaration(analysis: FunctionAnalysis, x: Extraction) -> bool:
+    """Whether *x* assigns a name declared outside it that it neither takes nor
+    returns. A name the span declares itself is its own binding (a second
+    ``for (int i``)."""
+    inside = range(x.start_line, x.end_line + 1)
+    defs = analysis.def_use.definitions
+    declared = [(d.var, d.line in inside) for d in defs if d.declared_at is not None]
+    outside = {v for v, held in declared if not held} - {v for v, held in declared if held}
+    outside -= set(x.params) | set(x.returns)
+    return any(d.line in inside and d.declared_at is None and d.var in outside for d in defs)
+
+
+def _loses_narrowing(
+    analysis: FunctionAnalysis, x: Extraction, language: str, def_lines: dict[str, list[int]]
+) -> bool:
+    """Whether a TypeScript narrowing the lines rely on stays behind in the
+    function, or one the code after them relies on leaves with them
+    (``narrowing``)."""
+    inside = range(x.start_line, x.end_line + 1)
+    args = (analysis.fn_node, get_language_map(language), x.start_line, x.end_line)
+    uses = [u for bdu in analysis.def_use.blocks.values() for u in bdu.uses if not u.echo]
+    # Names the function never binds (a module's): the helper reads them unnarrowed.
+    free = {u.name for u in uses if u.line in inside} - set(def_lines)
+    if property_narrowings(*args, set(x.params) | free, def_lines):
+        return True
+    if free and narrowings(*args, free, def_lines):
+        return True
+    return bool(span_guards(*args) & {u.name for u in uses if u.line > x.end_line})
+
+
+def _def_lines(analysis: FunctionAnalysis) -> dict[str, list[int]]:
+    out: dict[str, list[int]] = {}
+    for d in analysis.def_use.definitions:
+        out.setdefault(d.var, []).append(d.line)
+    return out
+
+
 def _narrow(
     analysis: FunctionAnalysis, extraction: Extraction, language: str | None, types: dict[str, str]
 ) -> dict[str, int]:
@@ -759,9 +884,7 @@ def _narrow(
     guard's line, for the plan's note."""
     if language not in _NARROWING_LANGUAGES or not extraction.params:
         return {}
-    def_lines: dict[str, list[int]] = {}
-    for d in analysis.def_use.definitions:
-        def_lines.setdefault(d.var, []).append(d.line)
+    def_lines = _def_lines(analysis)
     found = narrowings(
         analysis.fn_node,
         get_language_map(language),

@@ -3059,7 +3059,7 @@ var STANDING = /^\[repowise\] .+? is governed by a standing decision: (.+?)(?: b
 var MINED = /^\[repowise\] .+? has a decision recorded in it, mined but not reviewed: (.+?)(?: because .*)?\.$/;
 var FIXES = /^\[repowise\] .+? has been bug-fixed (\d+)x in the last 6 months, last (.+?)(?: \(bug magnet\))?(?:; mostly in (.+?))?\.$/;
 function stripConfirmed(line2) {
-  return line2.replace(/ \(confirmed across \d+ sessions\)\.$/, ".");
+  return line2.replace(/ \((?:seen in|confirmed across) \d+ sessions\)\.$/, ".");
 }
 function notesFromAugment(additionalContext) {
   if (!Array.isArray(additionalContext)) return [];
@@ -3275,6 +3275,12 @@ async function analyzeBlastRadius(repoId, body) {
   );
 }
 
+// ../api-client/src/areas.ts
+function holdParams(opts = {}) {
+  if (opts.hold !== "map") return {};
+  return { hold: "map", include: opts.include?.length ? [...opts.include].sort().join(",") : void 0 };
+}
+
 // ../api-client/src/code-health.ts
 async function getHealthMap(repoId, opts = {}) {
   return apiGet(`/api/repos/${repoId}/health/map`, {
@@ -3283,7 +3289,9 @@ async function getHealthMap(repoId, opts = {}) {
     scope: opts.scope,
     counts: opts.counts,
     include_held: opts.include_held || void 0,
-    q: opts.q?.trim() || void 0
+    q: opts.q?.trim() || void 0,
+    area: opts.area || void 0,
+    ...holdParams(opts)
   });
 }
 

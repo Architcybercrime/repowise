@@ -12,9 +12,7 @@ from repowise.core.analysis.dead_code.models import DeadCodeKind
 from repowise.core.analysis.dead_code.risk_factors import RISK_CAP_CONFIDENCE
 from repowise.core.analysis.dead_code.serving import (
     TIER_FLOORS,
-    CrossRepoLookup,
     FindingFilters,
-    adjust_cross_repo,
     apply_filters,
     build_summary,
     build_tiers,
@@ -25,6 +23,7 @@ from repowise.core.analysis.dead_code.serving import (
     rollup_by_directory,
     rollup_by_owner,
     serialize_finding,
+    serve_findings,
     summary_counts,
 )
 from repowise.core.analysis.finding_registry import excluded_types, served_previews
@@ -32,11 +31,11 @@ from repowise.core.persistence.crud import get_dead_code_findings
 from repowise.core.persistence.database import get_session
 from repowise.core.persistence.models import GitMetadata
 from repowise.core.registry import mcp_tool_registry as mcp
-from repowise.server.mcp_server import _state
 from repowise.server.mcp_server._basis import call_resolution_bases
 from repowise.server.mcp_server._budget import OmissionCollector
 from repowise.server.mcp_server._federation import Federation, merge_findings
 from repowise.server.mcp_server._helpers import (
+    _cross_repo_cut,
     _get_exclude_spec,
     _get_repo,
     _is_workspace_mode,
@@ -47,14 +46,6 @@ from repowise.server.mcp_server._helpers import (
 )
 from repowise.server.mcp_server._index_state import index_state_key
 from repowise.server.mcp_server._meta import build_meta as _build_meta
-
-
-def _cross_repo_lookup() -> CrossRepoLookup | None:
-    """The workspace's cross-repo data, when there is any to adjust by."""
-    enricher = _state._cross_repo_enricher
-    if enricher is None or not enricher.has_data or not _is_workspace_mode():
-        return None
-    return enricher
 
 
 async def _get_dead_code_all_repos(
@@ -76,11 +67,12 @@ async def _get_dead_code_all_repos(
             repo_findings, withheld = filters.split_withheld(repo_findings)
             repo_findings, gated = filters.split_gated(repo_findings)
             git_meta_map = await _load_git_meta_map(session, repository.id, repo_findings)
+        served = serve_findings(repo_findings, **_cross_repo_cut(ctx.alias))
         serialized = [
             serialize_finding(f, git_meta_map, repository=ctx.alias)
-            for f in apply_filters(repo_findings, filters)
+            for f in apply_filters(served, filters)
         ]
-        return serialized, summary_counts(repo_findings), withheld, gated
+        return serialized, summary_counts(served), withheld, gated
 
     fed = Federation()
     answered = await fed.run(_one_repo)
@@ -101,7 +93,6 @@ async def _get_dead_code_all_repos(
         merged_gated,
     )
     tiers = build_tiers(merged_findings, limit, tier)
-    adjust_cross_repo(tiers, _cross_repo_lookup())
 
     result_ws: dict[str, Any] = {
         "workspace": True,
@@ -178,7 +169,7 @@ async def get_dead_code(
 
     Run before a cleanup sprint, not a targeted fix. Findings tier
     high/medium/low with per-directory and per-owner rollups; workspace
-    mode lowers confidence on findings other repos import.
+    mode withdraws safety on findings other repos may use.
 
     Args:
         repo: usually omitted.
@@ -295,13 +286,21 @@ async def get_dead_code(
         # Phase 4: load git metadata for "last meaningful change" enrichment,
         # over the gated rows too so a lookup by id is enriched the same way.
         git_meta_map = await _load_git_meta_map(session, repository.id, every_shown_kind)
+        resolution_basis = (
+            []
+            if finding_id
+            else await call_resolution_bases(
+                session, repository.id, cache_key=index_state_key(repository)
+            )
+        )
 
     reference_repository = ctx.alias or repository.name
+    cut = _cross_repo_cut(ctx.alias)
     if finding_id:
         match = next(
             (
                 row
-                for row in every_shown_kind
+                for row in serve_findings(every_shown_kind, **cut)
                 if finding_id in {row.id, dead_code_finding_id(row, reference_repository)}
             ),
             None,
@@ -325,7 +324,8 @@ async def get_dead_code(
             ),
         }
 
-    filtered = apply_filters(all_findings, filters)
+    served = serve_findings(all_findings, **cut)
+    filtered = apply_filters(served, filters)
     serialized = [
         serialize_finding(f, git_meta_map, repository=reference_repository) for f in filtered
     ]
@@ -337,23 +337,21 @@ async def get_dead_code(
         )
 
     tiers = build_tiers(serialized, limit, tier, on_overflow=_keep_overflow)
-    summary = build_summary(summary_counts(all_findings), len(filtered), filters, withheld, gated)
-    adjust_cross_repo(tiers, _cross_repo_lookup(), ctx.alias)
+    counts = summary_counts(served)
+    summary = build_summary(counts, len(serialized), filters, withheld, gated)
 
     result: dict[str, Any] = {"summary": summary, "tiers": tiers}
     if group_by == "directory":
-        result["by_directory"] = rollup_by_directory(filtered)
+        result["by_directory"] = rollup_by_directory(serialized)
     elif group_by == "owner":
-        result["by_owner"] = rollup_by_owner(filtered)
+        result["by_owner"] = rollup_by_owner(serialized)
     result["impact"] = compute_impact(tiers)
 
     _maybe_limit_note(result)
 
     # How much of the call graph these findings rest on, per language. A
     # reachability finding is only as strong as the edges that reached.
-    summary["call_resolution_basis"] = await call_resolution_bases(
-        session, repository.id, cache_key=index_state_key(repository)
-    )
+    summary["call_resolution_basis"] = resolution_basis
 
     result["_meta"] = _build_meta(repository=repository)
     _attach_preview(result)

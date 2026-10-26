@@ -18,7 +18,10 @@ from repowise.server.mcp_server._helpers import (
 _RELATIONSHIP_LIMIT = 5
 
 
-def _contract_consumer(link: dict, provider_repo: str, provider_file: str) -> dict:
+def _contract_consumer(
+    link: dict, provider_repo: str, provider_file: str, provenance: dict | None = None
+) -> dict:
+    """A consumer row; *provenance* is the link's strategy and the consumer's origin."""
     row = {
         "source_repository": provider_repo,
         "source_file": provider_file,
@@ -37,10 +40,14 @@ def _contract_consumer(link: dict, provider_repo: str, provider_file: str) -> di
     for key in ("match_type", "confidence"):
         if link.get(key) is not None:
             row[key] = link[key]
+    row.update(provenance or {})
     return row
 
 
-def _contract_provider(link: dict, consumer_repo: str, consumer_file: str) -> dict:
+def _contract_provider(
+    link: dict, consumer_repo: str, consumer_file: str, provenance: dict | None = None
+) -> dict:
+    """A provider row; *provenance* is the link's strategy and the provider's origin."""
     row = {
         "source_repository": link["provider_repo"],
         "source_file": link["provider_file"],
@@ -59,6 +66,7 @@ def _contract_provider(link: dict, consumer_repo: str, consumer_file: str) -> di
     for key in ("match_type", "confidence"):
         if link.get(key) is not None:
             row[key] = link[key]
+    row.update(provenance or {})
     return row
 
 
@@ -159,16 +167,21 @@ def _cross_repo_links(
     provider_links: list[dict],
     consumer_links: list[dict],
     package_consumers: list[dict],
+    enricher: Any = None,
 ) -> list[dict]:
     """Every cross-repo row for *target*, contract evidence first."""
+
+    def provenance(link: dict, side: str) -> dict | None:
+        return enricher.link_provenance(link, side) if enricher is not None else None
+
     links = [
         *(
-            _contract_consumer(link, alias, target)
+            _contract_consumer(link, alias, target, provenance(link, "consumer"))
             for link in provider_links
             if link.get("consumer_repo") != alias
         ),
         *(
-            _contract_provider(link, alias, target)
+            _contract_provider(link, alias, target, provenance(link, "provider"))
             for link in consumer_links
             if link.get("provider_repo") != alias
         ),
@@ -226,7 +239,8 @@ def _attach_impact(
     """The legacy ``cross_repo_impact`` block, for a target with cross-repo rows.
 
     ``cross_repo_consumers`` keeps its old name; each row and the sibling
-    marker say it is historical co-change.
+    marker say it is historical co-change. The deprecated list is left out
+    when empty, so it never reads as "no consumers" beside ``affected_repos``.
     """
     target = r["target"]
     impact = r.setdefault("cross_repo_impact", {})
@@ -242,17 +256,18 @@ def _attach_impact(
         }
         for p in cross_partners
     ]
-    _set_capped(
-        impact,
-        "cross_repo_consumers",
-        legacy_co_changes,
-        collector,
-        target,
-        extra={
-            "cross_repo_consumers_semantics": "historical_co_change_partners",
-            "cross_repo_consumers_deprecated": True,
-        },
-    )
+    if legacy_co_changes:
+        _set_capped(
+            impact,
+            "cross_repo_consumers",
+            legacy_co_changes,
+            collector,
+            target,
+            extra={
+                "cross_repo_consumers_semantics": "historical_co_change_partners",
+                "cross_repo_consumers_deprecated": True,
+            },
+        )
     affected = _affected_repos(alias, links["all"])
     impact["cross_repo_consumers_analysis"] = cross_state
     impact["affected_repos"] = affected
@@ -289,7 +304,10 @@ def _enrich_target(
     package_consumers = enricher.get_package_consumers(alias)
     graph_collector = collector if include_graph else None
 
-    consumers = [_contract_consumer(link, alias, target) for link in provider_links]
+    consumers = [
+        _contract_consumer(link, alias, target, enricher.link_provenance(link, "consumer"))
+        for link in provider_links
+    ]
     _set_capped(r, "consumers", consumers, graph_collector, target)
     r["relationship_analysis"]["consumers"] = {
         **contract_state,
@@ -297,7 +315,7 @@ def _enrich_target(
         "evidence_kind": "contract",
     }
     links = _cross_repo_links(
-        alias, target, cross_partners, provider_links, consumer_links, package_consumers
+        alias, target, cross_partners, provider_links, consumer_links, package_consumers, enricher
     )
     _set_capped(r, "cross_repo_links", links, graph_collector, target)
     r["relationship_analysis"]["cross_repo"] = _combined_analysis(

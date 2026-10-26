@@ -29,7 +29,7 @@ from repowise.core.persistence.crud import (
     get_repository,
     update_job_status,
 )
-from repowise.core.persistence.database import get_session
+from repowise.core.persistence.database import get_session, refresh_planner_stats
 from repowise.core.pipeline import persist_pipeline_result, run_pipeline
 from repowise.core.pipeline.modes import OrchestratorMode
 from repowise.server.job_events import JobEventBuffer, create_event_buffer
@@ -59,74 +59,48 @@ from repowise.server.job_state import (
     _persist_initial_index_state,
     _stamp_last_sync_commit,
 )
+from repowise.server.services.areas import warm_area_model
+from repowise.server.services.coupling import warm_coupling_model
 
 logger = structlog.get_logger(__name__)
 
 
-def _repo_exclude_patterns(repo: Any, repo_path: str) -> list[str]:
-    """Collect a server job's exclude patterns from both config sources.
+def _repo_file_settings(repo: Any, repo_path: str) -> dict[str, Any]:
+    """The repo's ``exclude_patterns`` and ``wiki_style`` as a job sees them.
 
-    ``Repository.settings_json`` (web UI) and ``.repowise/config.yaml`` (CLI),
-    merged in order, de-duplicated, settings first. A missing or malformed
-    source is ignored.
+    ``.repowise/config.yaml`` is their home; a legacy ``settings_json`` value
+    applies only while the file lacks the key (``resolve_file_settings``). A
+    malformed source is ignored.
     """
-    patterns: list[str] = []
+    from repowise.core.repo_config import FILE_SETTING_KEYS, resolve_file_settings
 
-    def _add(values: Any) -> None:
-        if not isinstance(values, list):
-            return
-        for value in values:
-            if isinstance(value, str) and value not in patterns:
-                patterns.append(value)
-
-    # Source 1: DB-stored repo settings (web UI).
     try:
-        settings = json.loads(getattr(repo, "settings_json", "") or "{}")
-        if isinstance(settings, dict):
-            _add(settings.get("exclude_patterns"))
+        stored = json.loads(getattr(repo, "settings_json", "") or "{}")
     except (TypeError, ValueError):
         logger.debug("repo_settings_json_unparsable", repo_path=repo_path)
-
-    # Source 2: repo-local .repowise/config.yaml (CLI/init), via the shared loader.
+        stored = {}
+    if not isinstance(stored, dict):
+        stored = {}
     try:
-        from repowise.core.repo_config import load_repo_config
-
-        cfg = load_repo_config(Path(repo_path))
-        if isinstance(cfg, dict):
-            _add(cfg.get("exclude_patterns"))
+        return resolve_file_settings(Path(repo_path), stored)
     except Exception:
         logger.debug("repo_config_yaml_unreadable", repo_path=repo_path)
+        return {key: stored[key] for key in FILE_SETTING_KEYS if key in stored}
 
-    return patterns
+
+def _repo_exclude_patterns(repo: Any, repo_path: str) -> list[str]:
+    """A server job's exclude patterns, de-duplicated, non-strings dropped."""
+    values = _repo_file_settings(repo, repo_path).get("exclude_patterns")
+    if not isinstance(values, list):
+        return []
+    return list(dict.fromkeys(v for v in values if isinstance(v, str)))
 
 
 def _repo_wiki_style(repo: Any, repo_path: str) -> str:
-    """Resolve a server job's effective wiki style from both config sources.
-
-    ``Repository.settings_json`` wins (the web UI is the more deliberate
-    signal), then ``.repowise/config.yaml``, then the default. Unknown values
-    resolve to the default rather than failing the job.
-    """
+    """A server job's wiki style; an unknown value resolves to the default."""
     from repowise.core.generation.styles import resolve_style
 
-    style: str | None = None
-    try:
-        settings = json.loads(getattr(repo, "settings_json", "") or "{}")
-        if isinstance(settings, dict):
-            style = settings.get("wiki_style")
-    except (TypeError, ValueError):
-        logger.debug("repo_settings_json_unparsable", repo_path=repo_path)
-
-    if not style:
-        try:
-            from repowise.core.repo_config import load_repo_config
-
-            cfg = load_repo_config(Path(repo_path))
-            if isinstance(cfg, dict):
-                style = cfg.get("wiki_style")
-        except Exception:
-            logger.debug("repo_config_yaml_unreadable", repo_path=repo_path)
-
+    style = _repo_file_settings(repo, repo_path).get("wiki_style")
     return resolve_style(style, repo_path=repo_path).name
 
 
@@ -563,6 +537,7 @@ async def _run_index_job(run: _JobRun, app_state: Any) -> None:
 
     all_pages = (result.generated_pages or []) + incremental_pages
     await _refresh_fts(run.fts, swept_page_ids, all_pages)
+    await refresh_planner_stats(run.session_factory.kw["bind"])
 
     # Stop progress updates first, so none overwrites "completed".
     await run.progress.drain_and_stop()
@@ -571,6 +546,10 @@ async def _run_index_job(run: _JobRun, app_state: Any) -> None:
     pages_generated = await _record_index_completion(run, result, all_pages, elapsed)
     await _write_index_state(run, docs, total_pages=len(all_pages))
     await _reload_cross_repo_enricher(app_state, spec.job_id)
+    # The area rollup and the coupling fold are read on the first dashboard
+    # load after an index; fold them here, in the job's own task, instead.
+    await warm_area_model(run.session_factory, spec.repo_id)
+    await warm_coupling_model(run.session_factory, spec.repo_id)
 
     logger.info(
         "job_completed",

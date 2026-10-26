@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from tree_sitter import Node
 
@@ -19,6 +19,7 @@ from ..extractors import (
     extract_symbol_docstring,
     node_text,
 )
+from ..extractors.cobol import cobol_condition_parent
 from ..extractors.synthetic_symbols import extract_synthetic_symbols
 from ..extractors.synthetic_symbols.csharp_extension_blocks import drop_extension_block_symbols
 from ..extractors.visibility import py_module_all_names, ts_deferred_export_names
@@ -68,6 +69,28 @@ _node_text = node_text
 # Node types whose .scm patterns are anchored at module level, so the
 # callable-ancestor filter must not apply to them.
 _MODULE_ANCHORED_NODE_TYPES = frozenset({"assignment", "variable_declarator"})
+
+
+def _normalize_newlines(text: str | None) -> str | None:
+    """Return *text* with CRLF line endings rewritten as LF.
+
+    The signature and docstring strings are sliced straight out of the file
+    bytes, so a repository committed with CRLF — or a Windows checkout with
+    ``core.autocrlf=true`` — stores literal ``\r\n`` in them. The same
+    symbol then reads differently depending on the checkout's line-ending
+    setting, and the extra carriage returns cost tokens on every MCP reply.
+
+    Normalising the source before parsing is not an option: tree-sitter byte
+    offsets and line numbers have to keep matching the real file. So it
+    happens here, where the stored strings are produced. A lone ``\r`` is
+    not a line ending and is left alone.
+
+    *None* passes straight through: the docstring helpers return it when a
+    symbol has no docstring, and that absence is information.
+    """
+    if text is None:
+        return None
+    return text.replace("\r\n", "\n")
 
 
 def _match_identity(
@@ -232,6 +255,14 @@ def _extract_symbols(
         symbol, def_node = built
         symbols.append(symbol)
         node_types.append(def_node.type)
+
+        if language == "python" and def_node.type == "assignment":
+            for alias_symbol in _python_assignment_alias_symbols(
+                symbol, def_node, file_info.path, src
+            ):
+                symbols.append(alias_symbol)
+                node_types.append(def_node.type)
+
         if language == "objectivec":
             container = _objc_container_node(def_node, config.parent_class_types)
             objc_container_kinds.append(container.type if container else None)
@@ -315,6 +346,10 @@ def _symbol_from_match(capture_dict: dict, file: _SymbolPass) -> tuple[Symbol, N
         export_type_parents=file.cpp_exports.parents,
     )
 
+    # Anonymous Go interface methods have no named owner and are not symbols.
+    if node_type == "method_elem" and parent_name is None:
+        return None
+
     # A ``field_declaration`` cannot occur outside a class body, so a
     # missing parent means the class did not parse. Grammar recovery,
     # not a member function.
@@ -330,10 +365,14 @@ def _symbol_from_match(capture_dict: dict, file: _SymbolPass) -> tuple[Symbol, N
         name=name,
         qualified_name=_build_qualified_name(file_info.path, scope, name),
         kind=_method_or_kind(kind, parent_name, def_node, language),  # type: ignore[arg-type]
-        signature=build_signature(node_type, name, params_text, def_node, src),
+        signature=_normalize_newlines(
+            build_signature(node_type, name, params_text, def_node, src)
+        ) or "",
         start_line=start_line,
         end_line=end_line,
-        docstring=extract_symbol_docstring(def_node, src, language),
+        docstring=_normalize_newlines(
+            extract_symbol_docstring(def_node, src, language)
+        ),
         decorators=(
             [m for m in modifier_texts if m.startswith("@")]
             + _attribute_decorators(def_node, language, src)
@@ -490,7 +529,23 @@ def _resolve_parent_name(
     # Objective-C containers name themselves with a bare first identifier.
     if language == "objectivec":
         return _objc_container_parent(def_node, config.parent_class_types, src)
+
+    # COBOL: a level-88 condition name is a value of the item before it.
+    if language == "cobol":
+        return cobol_condition_parent(def_node)
     return None
+
+
+def _go_interface_owner(def_node: Node, src: str) -> str | None:
+    """Name of the interface type_spec that directly declares def_node."""
+    iface = def_node.parent
+    if iface is None or iface.type != "interface_type":
+        return None
+    spec = iface.parent
+    if spec is None or spec.type != "type_spec":
+        return None
+    name = spec.child_by_field_name("name")
+    return _node_text(name, src).strip() if name is not None else None
 
 
 def _find_parent(
@@ -501,6 +556,9 @@ def _find_parent(
 ) -> str | None:
     """Determine the parent class/type for a symbol."""
     if config.parent_extraction == "receiver":
+        # Go interface methods belong to their named interface declaration.
+        if def_node.type == "method_elem":
+            return _go_interface_owner(def_node, src)
         # Go: extract type name from receiver parameter list
         if receiver_nodes:
             return extract_go_receiver_type(_node_text(receiver_nodes[0], src))
@@ -539,3 +597,70 @@ def _finalize_symbols(
     follow_renamed_hosts(symbols)
     disambiguate_colliding_ids(anonymous, lang)
     return symbols
+
+def _python_name_alias_chain(def_node: Node, src: str) -> tuple[list[str], str | None]:
+    """Every bare-identifier target of a Python assignment, and its terminal name.
+
+    ``a = b = c`` nests in tree-sitter-python: the outer assignment's own
+    ``right`` field is itself an ``assignment`` node, not a sibling target, so
+    walking ``right`` is what reaches ``b`` at all -- the query that captures
+    ``@symbol.def`` only ever matches the outermost ``a``. The walk stops, and
+    returns ``(targets_so_far, None)``, the moment a target is not a bare
+    identifier (tuple unpacking, an attribute target) or the chain bottoms out
+    on anything but a bare identifier (a call, a literal, an attribute access)
+    -- those are not an alias of a name and must not be treated as one (#2791).
+
+    Returns ``([], None)`` for a plain, non-chained ``x = <non-name>``, since
+    there is nothing beyond the one target the caller already has.
+    """
+    targets: list[str] = []
+    node: Node | None = def_node
+    while node is not None and node.type == "assignment":
+        left = node.child_by_field_name("left")
+        if left is None or left.type != "identifier":
+            return [], None
+        targets.append(_node_text(left, src))
+        node = node.child_by_field_name("right")
+    if node is None or node.type != "identifier":
+        return [], None
+    return targets, _node_text(node, src)
+
+def _python_assignment_alias_symbols(
+    symbol: Symbol, def_node: Node, file_path: str, src: str
+) -> list[Symbol]:
+    """Mark *symbol* as an alias in place, and return the chain's other targets.
+
+    ``symbol`` is already built for the outermost target (``s`` in
+    ``s = attributes = widget``), the only one the query itself captures. This
+    walks the rest of the chain and:
+
+    - sets ``symbol.alias_of`` when the chain bottoms out on a bare name, so
+      the call resolver can redirect calls through ``s`` onto ``widget``;
+    - returns one freshly built ``Symbol`` per further target (``attributes``
+      here), none of which the query ever sees at all today, each carrying
+      the same ``alias_of``.
+
+    A target equal to the terminal name (``s = s``) is left as an ordinary,
+    non-aliased symbol -- there is no other definition to redirect onto.
+    Returns ``[]``, and leaves ``symbol`` untouched, for every shape outside
+    this issue's scope: no chain, a non-identifier target, or a right-hand
+    side that is not a bare name (#2791).
+    """
+    targets, terminal = _python_name_alias_chain(def_node, src)
+    if terminal is None or not targets:
+        return []
+    if targets[0] != terminal:
+        symbol.alias_of = terminal
+
+    extra: list[Symbol] = []
+    for target in targets[1:]:
+        extra.append(
+            replace(
+                symbol,
+                id=f"{file_path}::{target}::alias@{def_node.start_byte}",
+                name=target,
+                qualified_name=_build_qualified_name(file_path, None, target),
+                alias_of=terminal if target != terminal else None,
+            )
+        )
+    return extra

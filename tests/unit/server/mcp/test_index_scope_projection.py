@@ -89,7 +89,7 @@ def test_the_digest_keeps_what_changes_how_an_answer_reads() -> None:
     assert compact["git_tier"] == "full"
     assert compact["projection"] == "compact"
     # Says outright that it is not the whole thing, and where the rest is.
-    assert compact["full"] == "get_overview()"
+    assert compact["full"] == 'get_overview(include=["scope"])'
 
 
 def test_the_digest_is_a_fraction_of_the_scope_it_stands_for() -> None:
@@ -331,7 +331,7 @@ def test_a_long_degraded_list_is_sampled_with_its_count() -> None:
 
 def test_a_real_analysis_id_survives_a_flood_of_run_warnings() -> None:
     """Warnings with a leading space sort first alphabetically; the id still shows."""
-    warnings = [f"  Not indexed: big/file_{i}.cs (3,000 KB, over the limit)" for i in range(16)]
+    warnings = [f"  Warning: failed to trace step {i}" for i in range(16)]
     scope = resolve_index_scope({**_FULL_STATE, "degraded": [*warnings, "dead_code"]})
 
     compact = compact_index_scope(scope)
@@ -372,14 +372,14 @@ def test_the_fingerprint_refuses_what_it_cannot_canonicalise() -> None:
 def test_the_pointer_names_the_repo_argument_in_workspace_mode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """get_overview() with no repo returns the listing, which carries no scope."""
+    """The digest names the repo argument: in a workspace it picks the repo."""
     from repowise.server.mcp_server import _state
 
     monkeypatch.setattr(_state, "_registry", object(), raising=False)
 
     out = _meta.build_meta(repository=_write_state(tmp_path, _FULL_STATE))
 
-    assert out["index_scope"]["full"] == "get_overview(repo=...)"
+    assert out["index_scope"]["full"] == 'get_overview(repo=..., include=["scope"])'
 
 
 def test_the_pointer_is_a_plain_call_for_a_single_repo(
@@ -391,7 +391,7 @@ def test_the_pointer_is_a_plain_call_for_a_single_repo(
 
     out = _meta.build_meta(repository=_write_state(tmp_path, _FULL_STATE))
 
-    assert out["index_scope"]["full"] == "get_overview()"
+    assert out["index_scope"]["full"] == 'get_overview(include=["scope"])'
 
 
 def test_the_window_opens_without_a_restart(

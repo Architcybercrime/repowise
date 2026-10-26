@@ -9,7 +9,7 @@ import click
 from rich.markup import escape
 from rich.table import Table
 
-from repowise.cli.ci import append_step_summary
+from repowise.cli.ci import append_step_summary, write_gate_summary
 from repowise.cli.helpers import console, repo_index_session, run_async
 from repowise.core.analysis.change_risk import ChangeRiskResult, change_risk_payload
 from repowise.core.analysis.change_risk.render import LIMITS, fix_history_text, size_text
@@ -122,8 +122,11 @@ def _print_change_facts(result: ChangeRiskResult) -> None:
     features, request_excludes = result.features, result.request_excludes
     if result.working_tree:
         console.print("  [dim]Scoring your uncommitted changes, not the last commit.[/dim]")
+    # A range's subject is its head commit's; its fix flag covers every commit.
+    is_range = ".." in features.ref
     if features.subject:
-        console.print(f"  [dim]{features.subject}[/dim]")
+        head = "Head commit: " if is_range else ""
+        console.print(f"  [dim]{head}{features.subject}[/dim]")
     if request_excludes:
         console.print(f"  [dim]Excluding {len(request_excludes)} pattern(s).[/dim]")
     console.print(
@@ -131,7 +134,11 @@ def _print_change_facts(result: ChangeRiskResult) -> None:
         f"{features.nd} dirs · {features.ns} subsystems · "
         f"entropy {features.entropy:.2f} · author exp "
         f"{'unknown' if features.exp is None else features.exp}"
-        + ("  [magenta](fix)[/magenta]" if features.is_fix else "")
+        + (
+            f"  [magenta]({'range contains a fix' if is_range else 'fix'})[/magenta]"
+            if features.is_fix
+            else ""
+        )
     )
 
 
@@ -200,4 +207,5 @@ def _emit_machine(subject: _Subject, result: ChangeRiskResult) -> None:
         for line in render.github_annotations(result, fail_above):
             click.echo(line)
         append_step_summary(render.render_markdown(result, fail_above))
+        write_gate_summary(render.gate_summary(result, fail_above))
         console.print(render.headline(result, fail_above, markdown=False), markup=False)

@@ -191,6 +191,7 @@ def sealed_evidence_fixture() -> tuple[list[SimpleNamespace], dict]:
 def test_provenance_vocabulary_is_explicit_and_legacy_safe() -> None:
     assert provenance_for_source("session") == "human_decision"
     assert provenance_for_source("inline_marker") == "extracted_rationale"
+    assert provenance_for_source("agent") == "extracted_rationale"
     assert provenance_for_source("git_archaeology") == "historical"
     assert provenance_for_source("inferred") == "inferred"
     assert provenance_for_source("future_extractor") == "unknown"
@@ -590,7 +591,8 @@ async def test_no_decision_and_unsupported_modes_remain_compatible(
     assert unsupported == {
         "error": (
             "repo='all' is not supported for get_why (health dashboard). "
-            "Specify a repo alias instead. Available: []"
+            "Specify a repo alias instead. Available: [] "
+            "To search all repositories, pass a query."
         )
     }
 

@@ -36,7 +36,7 @@ code through graph edges.
 | Dead code | Unreachable files, unused exports, unused packages, by confidence tier | [DEAD_CODE.md](DEAD_CODE.md) |
 | Inferred test links | Which tests reach a file, without a coverage report | [TEST_INTELLIGENCE.md](TEST_INTELLIGENCE.md) |
 | Cross-repo contracts | HTTP, gRPC, topic and OpenAPI contracts matched between repositories, with breaking-change detection | [WORKSPACES.md](../scale/WORKSPACES.md) |
-| Language coverage | What each of the 41 supported languages gets | [LANGUAGE_SUPPORT.md](LANGUAGE_SUPPORT.md) |
+| Language coverage | What each of the 42 supported languages gets | [LANGUAGE_SUPPORT.md](LANGUAGE_SUPPORT.md) |
 
 ## 2. Git history: where change and breakage concentrate
 
@@ -46,7 +46,7 @@ no import between them can still change together every week.
 
 | Built on it | What you get | Read more |
 |---|---|---|
-| Ownership and knowledge risk | Owners, bus factor, silos, knowledge loss when a main author goes quiet, suggested reviewers | [OWNERSHIP.md](OWNERSHIP.md) |
+| Ownership and knowledge risk | Owners, bus factor, silos, fading ownership when a main author goes quiet, suggested reviewers | [OWNERSHIP.md](OWNERSHIP.md) |
 | Bug history | Fix commits traced to files and symbols, bug magnets | [BUG_HISTORY.md](BUG_HISTORY.md) |
 | Hidden coupling | Files that change together with no import link | [CHANGE_RISK.md](CHANGE_RISK.md) |
 | Branch overlap | Other branches editing the same files or their co-change partners | [CHANGE_RISK.md](CHANGE_RISK.md#branch-overlap) |

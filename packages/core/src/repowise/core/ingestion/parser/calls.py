@@ -34,6 +34,12 @@ def _call_receiver_from_node(node: Node, src: str) -> CallReceiver | None:
 
     if node.type == "identifier":
         return _dart_call_receiver(node, src)
+    if (
+        node.type == "call_expression"
+        and node.child_by_field_name("function") is None
+        and node.child_by_field_name("arguments") is None
+    ):
+        return _kotlin_call_receiver(node, src)
     arguments = node.child_by_field_name("arguments")
     argument_count = _count_arguments(arguments) if arguments is not None else None
 
@@ -57,6 +63,42 @@ def _call_receiver_from_node(node: Node, src: str) -> CallReceiver | None:
     if receiver is not None and receiver.type in ("identifier", "this"):
         receiver_name = _node_text(receiver, src).strip() or None
     return CallReceiver(target_name, receiver_name, argument_count)
+
+
+def _kotlin_call_receiver(call: Node, src: str) -> CallReceiver | None:
+    """Describe a Kotlin call captured as another call's receiver."""
+    named = call.named_children
+    callee = named[0] if named else None
+    arguments = next(
+        (child for child in named if child.type == "value_arguments"), None
+    )
+    if callee is None or arguments is None:
+        return None
+    count = _count_arguments(arguments)
+
+    if callee.type == "identifier":
+        return CallReceiver(_node_text(callee, src).strip(), None, count)
+    if callee.type != "navigation_expression" or len(callee.named_children) != 2:
+        return None
+
+    receiver, target = callee.named_children
+    if target.type != "identifier":
+        return None
+
+    if receiver.type == "call_expression":
+        receiver_name = None
+    elif receiver.type in ("identifier", "this_expression") or (
+        receiver.type == "navigation_expression"
+        and [child.type for child in receiver.named_children]
+        == ["this_expression", "identifier"]
+    ):
+        receiver_name = _receiver_text("kotlin", receiver, src)
+    else:
+        return None
+
+    if receiver.type != "call_expression" and receiver_name is None:
+        return None
+    return CallReceiver(_node_text(target, src).strip(), receiver_name, count)
 
 
 def _function_target(function: Node) -> tuple[Node | None, Node | None]:
@@ -129,10 +171,36 @@ def _dart_argument_count(selector: Node | None) -> int | None:
 
 
 
+def _dart_receiver_path(head: Node, target: Node, src: str) -> str | None:
+    """The Dart receiver as a plain dotted path: ``r``, or ``r.item`` for ``r.item.m()``.
+
+    A Dart member access is no node of its own: the head is followed by flat
+    ``selector`` siblings, and the ones between it and the method's selector
+    are the field links. Each must be a plain ``.name``; anything else (a
+    call, an index, a ``?.`` hop) drops the site, as it does for TypeScript
+    and Python, so it never reaches the bare-call tiers.
+    """
+    method_selector = target.parent.parent if target.parent is not None else None
+    parts = [_node_text(head, src).strip()]
+    link = head.next_named_sibling
+    while link is not None and link != method_selector:
+        accessor = link.named_children[0] if link.named_child_count == 1 else None
+        if accessor is None or accessor.type != "unconditional_assignable_selector":
+            return None
+        names = [c for c in accessor.named_children if c.type == "identifier"]
+        if len(names) != 1:
+            return None
+        parts.append(_node_text(names[0], src).strip())
+        link = link.next_named_sibling
+    return ".".join(parts) if link is not None else None
+
+
 # The receiver captures that are themselves a member access, by language (the
 # queries widen only these two), and what a plain dotted path of names looks
 # like once whitespace is gone.
-_PATH_RECEIVERS = frozenset({("typescript", "member_expression"), ("python", "attribute")})
+_PATH_RECEIVERS = frozenset(
+    {("typescript", "member_expression"), ("python", "attribute"), ("apex", "field_access")}
+)
 _DOTTED_PATH = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+")
 
 
@@ -309,6 +377,14 @@ def _call_from_match(
 
     arg_nodes = capture_dict.get("call.arguments", [])
     receiver_call_nodes = capture_dict.get("call.receiver_call", [])
+    receiver_call = (
+        _call_receiver_from_node(receiver_call_nodes[0], src)
+        if receiver_call_nodes
+        else None
+    )
+    if receiver_call_nodes and receiver_call is None and language == "kotlin":
+        # Avoid resolving an unsupported chained call by its bare name.
+        return None
     scope_nodes = capture_dict.get("call.scope", [])
     line = site_node.start_point[0] + 1
     arguments = _overload_arguments(language, arg_nodes)
@@ -318,10 +394,8 @@ def _call_from_match(
         caller_symbol_id=_find_enclosing_symbol(line, symbol_ranges),
         line=line,
         argument_count=_count_arguments(arg_nodes[0]) if arg_nodes else None,
-        receiver_call=(
-            _call_receiver_from_node(receiver_call_nodes[0], src) if receiver_call_nodes else None
-        ),
-        argument_types=_argument_literal_types(arguments, src),
+        receiver_call=receiver_call,
+        argument_types=_argument_literal_types(arguments, src, language),
         argument_names=_argument_names(arguments, src),
         scope_name=_node_text(scope_nodes[0], src).strip() if scope_nodes else None,
         edge_type=(
@@ -331,6 +405,7 @@ def _call_from_match(
         # Ceiling: schedulers matched by name, the task followed within its
         # own function only (see ``python_tasks``).
         spawned=language == "python" and is_fire_and_forget(site_node, src),
+        program_call=language == "cobol" and site_node.type == "call_statement",
     )
     return (site_node.start_byte, site_node.end_byte, target_name), call
 
@@ -364,7 +439,11 @@ def _call_names(
         return None
     receiver_name = None
     if receiver_nodes:
-        receiver_name = _receiver_text(language, receiver_nodes[0], src)
+        receiver_name = (
+            _dart_receiver_path(receiver_nodes[0], target_node, src)
+            if language == "dart"
+            else _receiver_text(language, receiver_nodes[0], src)
+        )
         if receiver_name is None:
             return None
     if receiver_name and language == "php":

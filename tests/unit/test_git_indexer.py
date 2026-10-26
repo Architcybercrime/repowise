@@ -318,6 +318,48 @@ class TestHotspotAbsoluteFloors:
         assets = next(m for m in metas if m["file_path"] == "assets.bin")
         assert assets["is_hotspot"] is True
 
+    def test_percentiles_parity_with_sql_percent_rank(self) -> None:
+        """N=5 percentiles mirror SQL PERCENT_RANK() exactly: [0.0, 0.25, 0.50, 0.75, 1.00]."""
+        from repowise.core.ingestion.git_indexer.enrich import compute_percentiles
+
+        metas = [
+            {
+                "file_path": f"f{i}.py",
+                "temporal_hotspot_score": float(i * 10),
+                "commit_count_90d": 10,
+                "lines": 100,
+            }
+            for i in range(1, 6)
+        ]
+        compute_percentiles(metas)
+        pcts = [m["churn_percentile"] for m in metas]
+        assert pcts == [0.0, 0.25, 0.50, 0.75, 1.00]
+        # f4 and f5 are >= 0.75 and clear floors
+        assert metas[0].get("is_hotspot", False) is False
+        assert metas[1].get("is_hotspot", False) is False
+        assert metas[2].get("is_hotspot", False) is False
+        assert metas[3].get("is_hotspot", False) is True
+        assert metas[4].get("is_hotspot", False) is True
+
+    def test_percentiles_tie_breaking_shared_rank(self) -> None:
+        """Ties share the same rank and hotspot classification instead of being arbitrarily split."""
+        from repowise.core.ingestion.git_indexer.enrich import compute_percentiles
+
+        metas = [
+            {"file_path": "quiet.py", "temporal_hotspot_score": 1.0, "commit_count_90d": 2, "lines": 50},
+            {"file_path": "tied_a.py", "temporal_hotspot_score": 50.0, "commit_count_90d": 12, "lines": 100},
+            {"file_path": "tied_b.py", "temporal_hotspot_score": 50.0, "commit_count_90d": 12, "lines": 100},
+            {"file_path": "tied_c.py", "temporal_hotspot_score": 50.0, "commit_count_90d": 12, "lines": 100},
+        ]
+        compute_percentiles(metas)
+        assert metas[0]["churn_percentile"] == 0.0
+        # All three tied items have exactly 1 file scoring strictly lower out of 3 possible: 1 / 3 = 0.333...
+        assert metas[1]["churn_percentile"] == pytest.approx(1 / 3)
+        assert metas[2]["churn_percentile"] == pytest.approx(1 / 3)
+        assert metas[3]["churn_percentile"] == pytest.approx(1 / 3)
+        # Hotspot status is identical for all three
+        assert metas[1].get("is_hotspot", False) == metas[2].get("is_hotspot", False) == metas[3].get("is_hotspot", False)
+
 
 class TestCountActiveContributors:
     """count_active_contributors derives the repo's 90-day team size from
@@ -379,6 +421,67 @@ class TestCountActiveContributors:
         anchor = 900_000_000  # ancient wall-clock-wise; irrelevant
         metas = [self._meta(("Alice", anchor), ("Bob", anchor - 30 * 86400))]
         assert count_active_contributors(metas) == 2
+
+    @pytest.mark.parametrize(
+        ("authors", "expected"),
+        [
+            pytest.param(
+                [("Alice Smith", "alice@example.com"), ("alice", "alice@example.com")],
+                1,
+                id="same-email-aliases",
+            ),
+            pytest.param(
+                [("Alex", "first@example.com"), ("Alex", "second@example.com")],
+                2,
+                id="same-name-distinct-emails",
+            ),
+            pytest.param(
+                [
+                    ("Alice", "123+alice@users.noreply.github.com"),
+                    ("alice", "alice@users.noreply.github.com"),
+                ],
+                1,
+                id="canonical-noreply-email",
+            ),
+            pytest.param([("Alice", None), (" Alice ", None)], 1, id="name-fallback-whitespace"),
+            pytest.param([("Alice", None), ("alice", None)], 1, id="name-fallback-case-insensitive"),
+            pytest.param([("", "alice@example.com")], 1, id="email-without-name"),
+            pytest.param([("", None)], None, id="missing-identity"),
+        ],
+    )
+    def test_counts_canonical_identities(
+        self, authors: list[tuple[str, str | None]], expected: int | None
+    ) -> None:
+        import json
+
+        from repowise.core.ingestion.git_indexer.enrich import count_active_contributors
+
+        metas = [{
+            "top_authors_json": json.dumps([
+                {"name": name, "email": email, "last_commit_ts": 1_700_000_000}
+                for name, email in authors
+            ])
+        }]
+        assert count_active_contributors(metas) == expected
+
+    def test_identity_keeps_latest_timestamp_across_files(self) -> None:
+        import json
+
+        from repowise.core.ingestion.git_indexer.enrich import count_active_contributors
+
+        anchor = 1_700_000_000
+        cutoff = anchor - 30 * 86400
+        metas = [
+            {"top_authors_json": json.dumps([
+                {"name": "Alice", "email": "alice@example.com", "last_commit_ts": anchor},
+                {"name": "Bob", "email": "bob@example.com", "last_commit_ts": cutoff},
+            ])},
+            {"top_authors_json": json.dumps([
+                {"name": "alice", "email": "alice@example.com", "last_commit_ts": cutoff - 1},
+                {"name": "Carol", "email": "carol@example.com", "last_commit_ts": cutoff - 1},
+            ])},
+        ]
+        assert count_active_contributors(metas, window_days=30) == 2
 
 
 # ---------------------------------------------------------------------------

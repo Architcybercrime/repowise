@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,14 +21,13 @@ from repowise.cli.commands._index_outcome import refresh_read_snapshots  # noqa:
 from repowise.cli.helpers import (
     as_commit_id,
     console,
+    err_console,
     head_commit_ts,
     load_config,
     load_state,
     run_async,
     save_state,
 )
-from repowise.core.analysis.health import HEALTH_ANALYZER_VERSION
-from repowise.core.analysis.security_scan import SECURITY_SCANNER_VERSION
 from repowise.core.ingestion.git_indexer import GIT_HISTORY_VERSION, GIT_HISTORY_VERSION_KEY
 from repowise.core.pipeline import PhaseTimings, timed
 
@@ -133,23 +131,23 @@ async def _coverage_for_rescore(
 ) -> RescoreCoverage:
     """Coverage to feed a health re-score, preserved across updates.
 
-    Default: reload the rows already persisted (no re-parse). When
-    ``coverage.reingest_on_update`` is set, re-discover and re-resolve a
-    fresh report instead.
+    Re-discover and re-resolve the reports when one was written after the
+    last ingest (``CoverageConfig.reingest``; ``coverage.reingest_on_update``
+    forces it on or off), else reload the rows already persisted.
     """
     from repowise.core.analysis.health.coverage import (
         CoverageConfig,
         build_coverage_map,
     )
     from repowise.core.persistence.crud import load_coverage_map
+    from repowise.core.pipeline.incremental.loaders import coverage_reports_to_reread
     from repowise.core.repo_config import load_repo_config
 
     cfg = CoverageConfig.from_repo_config(load_repo_config(repo_path))
 
-    # Without paths or discovery there is nothing to re-read, so the stored
-    # rows (e.g. from `coverage add`) stay authoritative.
-    if cfg.reingest_on_update and (cfg.paths or cfg.auto_discover):
-        reports = cfg.reports(repo_path)
+    # ``None`` keeps the stored rows (e.g. from `coverage add`).
+    reports = await coverage_reports_to_reread(session, repo_id, Path(repo_path), cfg)
+    if reports is not None:
         if reports:
             repo_keys = {pf.file_info.path for pf in parsed_files}
             resolved, _errors = build_coverage_map(
@@ -429,6 +427,8 @@ def _rescore_stale_findings(
         # None over it when git gave us no timestamp.
         if head_ts is not None:
             last_full_rescore_at = head_ts
+        from repowise.core.analysis.health import HEALTH_ANALYZER_VERSION
+
         health_analyzer_version = HEALTH_ANALYZER_VERSION
     if force_full_rescore and not rescored:
         raise RuntimeError(
@@ -441,6 +441,8 @@ def _rescore_stale_findings(
     # persist above only rescanned the changed files.
     security_scanner_version = state.get("security_scanner_version")
     if security_scanner_changed(state):
+        from repowise.core.analysis.security_scan import SECURITY_SCANNER_VERSION
+
         with timed(timings, "security_rescan"):
             if run_full_security_rescan(repo_path, exclude_patterns or []):
                 security_scanner_version = SECURITY_SCANNER_VERSION
@@ -480,6 +482,98 @@ def _stamp_scope(repo_path: Any, new_state: dict, failed_steps: list[str]) -> No
             "skipped": scope["analysis"]["skipped"],
         },
     )
+
+
+def stamp_file_page_scope(
+    repo_path: Any,
+    state: dict,
+    parsed_files: list | None,
+    graph_builder: Any,
+    git_meta_map: dict | None,
+) -> None:
+    """Recount ``index_scope.file_pages`` from this run's parse and the stored pages.
+
+    Eligibility applies selection's gates except the cap, as init's figure does;
+    an unreadable store keeps the previous figures.
+    """
+    if not parsed_files or graph_builder is None:
+        return
+    from repowise.core.generation import GenerationConfig
+    from repowise.core.generation.selection.selector import eligible_file_page_paths
+    from repowise.core.index_scope import file_page_counts, resolve_index_scope, stamp_index_scope
+    from repowise.core.repo_config import load_repo_config
+
+    try:
+        pagerank = graph_builder.pagerank()
+    except Exception as exc:  # a released graph cannot rank anything
+        log.debug("file_page_scope_skipped", error=str(exc))
+        return
+    stored = run_async(_load_page_paths_and_hotspots(repo_path))
+    if stored is None:
+        return
+    page_paths, hotspots = stored
+    for path, meta in (git_meta_map or {}).items():
+        if meta.get("is_hotspot"):
+            hotspots.add(path)
+        else:
+            hotspots.discard(path)
+    eligible = eligible_file_page_paths(
+        parsed_files,
+        pagerank,
+        hotspots=hotspots,
+        dedupe_near_clones=GenerationConfig.from_repo_config(
+            load_repo_config(Path(repo_path))
+        ).dedupe_near_clones,
+    )
+    config = load_config(repo_path)
+    stamp_index_scope(
+        state,
+        config,
+        file_pages=file_page_counts(
+            configured_cap=resolve_index_scope(state, config)["file_pages"]["configured_cap"],
+            eligible=len(eligible),
+            generated=len(eligible & page_paths),
+        ),
+    )
+
+
+async def _load_page_paths_and_hotspots(repo_path: Any) -> tuple[set[str], set[str]] | None:
+    """Paths with a live file page, and the stored hotspot paths."""
+    from sqlalchemy import select
+
+    from repowise.cli.helpers import get_db_url_for_repo
+    from repowise.core.persistence import (
+        create_engine,
+        create_session_factory,
+        get_repository_by_path,
+        get_session,
+    )
+    from repowise.core.persistence.models import GitMetadata, Page
+
+    engine = create_engine(get_db_url_for_repo(repo_path))
+    try:
+        async with get_session(create_session_factory(engine)) as session:
+            repo = await get_repository_by_path(session, str(repo_path))
+            if repo is None:
+                return None
+            pages = await session.execute(
+                select(Page.target_path).where(
+                    Page.repository_id == repo.id,
+                    Page.page_type == "file_page",
+                    Page.freshness_status != "tombstone",
+                )
+            )
+            hotspots = await session.execute(
+                select(GitMetadata.file_path).where(
+                    GitMetadata.repository_id == repo.id, GitMetadata.is_hotspot.is_(True)
+                )
+            )
+            return set(pages.scalars()), set(hotspots.scalars())
+    except Exception as exc:
+        log.warning("file_page_scope_read_failed", error=str(exc))
+        return None
+    finally:
+        await engine.dispose()
 
 
 def _persist_index_only_update(
@@ -636,8 +730,11 @@ def _persist_index_only_update(
         timings.stop("run")
         new_state["phase_timings"] = timings.totals
     _stamp_scope(repo_path, new_state, failed_steps)
+    stamp_file_page_scope(repo_path, new_state, parsed_files, graph_builder, git_meta_map)
     save_state(repo_path, new_state)
     elapsed = time.monotonic() - start
+    from repowise.core.index_scope import upgrade_command
+
     from .reporting import show_index_only_completion
 
     show_index_only_completion(
@@ -650,6 +747,7 @@ def _persist_index_only_update(
         pages_rendered=pages_rendered,
         template_wiki=template_wiki,
         changed_paths=changed_paths,
+        upgrade_command=upgrade_command(new_state.get("index_scope")),
     )
 
 
@@ -917,6 +1015,7 @@ async def _rescore_health_from_db(
         from repowise.core.analysis.communities import file_community_labels
         from repowise.core.analysis.health import HealthAnalyzer
         from repowise.core.analysis.health.config import HealthConfig
+        from repowise.core.analysis.health.coverage import measurement_commit
         from repowise.core.analysis.health.history_refresh import (
             BLAME_MARKERS,
             git_meta_rows_to_map,
@@ -1058,15 +1157,21 @@ async def _rescore_health_from_db(
                 # ``repo.head_commit`` column. The column names the last
                 # *indexed* commit; the coverage just scored describes the
                 # working tree, and the two diverge when the tree moved after
-                # the last index (issue #1747). Live HEAD is the provenance
-                # answer: it is the tree the coverage was measured against.
+                # the last index (issue #1747). HEAD is the right answer for a
+                # report written since the last commit; one left over from
+                # earlier measures the tree as of its own date, so the stamp
+                # moves back to the commit that was HEAD then (issue #3901).
                 live_head = get_head_commit(Path(repo_path)) or getattr(repo, "head_commit", None)
                 await save_coverage_files(
                     session,
                     repo_id,
                     coverage.files,
                     source_format=coverage.source_format or "lcov",
-                    ingested_commit_sha=live_head,
+                    ingested_commit_sha=measurement_commit(
+                        repo_path,
+                        getattr(coverage.provenance, "measured_at", None),
+                        live_head,
+                    ),
                     provenance=coverage.provenance,
                 )
 
@@ -1124,6 +1229,8 @@ def _run_full_health_rescore(
         console.print(f"[yellow]Health re-score failed: {exc}[/yellow]")
         raise
 
+    from repowise.core.analysis.health import HEALTH_ANALYZER_VERSION
+
     # Same full-replace re-score the periodic gate runs, so it restarts the same
     # cadence. Left unstamped when git is unreadable: the gate cannot fire
     # without a head_ts either.
@@ -1160,22 +1267,27 @@ def _run_full_health_rescore(
 # stays deterministic on historical checkouts; override for tests.
 _FULL_RESCORE_INTERVAL_DAYS = 7.0
 
+# The malformed-value warning is global, not per-repo. `_full_rescore_interval_days`
+# is consulted once per repo in a workspace fan-out, `repowise watch` and post-commit
+# hook updates, so a naive warn-in-except would spam the terminal once per repo. Hoist
+# the once-per-invocation guarantee into a module-level guard (#1371).
+_FULL_RESCORE_WARNING_SENT = False
+
 
 def _full_rescore_interval_days() -> float:
+    global _FULL_RESCORE_WARNING_SENT
     raw = os.environ.get("REPOWISE_FULL_RESCORE_INTERVAL_DAYS", "").strip()
     if raw:
         try:
             return max(0.0, float(raw))
         except ValueError:
-            # Say it where the user will actually see it: a silently-ignored
-            # value makes the rescore cadence look deliberate when it is
-            # actually the default (issue #1370). stderr matches how
-            # build_embedder reports the same class of misconfiguration.
-            print(
-                f"REPOWISE_FULL_RESCORE_INTERVAL_DAYS={raw!r} is not a number; "
-                f"using the default {_FULL_RESCORE_INTERVAL_DAYS} days.",
-                file=sys.stderr,
-            )
+            if not _FULL_RESCORE_WARNING_SENT:
+                _FULL_RESCORE_WARNING_SENT = True
+                err_console.print(
+                    "[yellow]Warning:[/yellow] "
+                    f"REPOWISE_FULL_RESCORE_INTERVAL_DAYS must be a number "
+                    f"(got '{raw}'); using {_FULL_RESCORE_INTERVAL_DAYS:.0f}-day default"
+                )
     return _FULL_RESCORE_INTERVAL_DAYS
 
 
@@ -1242,6 +1354,8 @@ def health_analyzer_changed(state: dict) -> bool:
     stated defect. They pick the stamp up on their first re-score from any
     other trigger.
     """
+    from repowise.core.analysis.health import HEALTH_ANALYZER_VERSION
+
     stored = state.get("health_analyzer_version")
     return stored is not None and stored != HEALTH_ANALYZER_VERSION
 
@@ -1255,6 +1369,8 @@ def security_scanner_changed(state: dict) -> bool:
     unstamped forever, since only the rescan this gates writes the stamp.
     ``init`` stamps every fresh index, so a new install never reads as stale.
     """
+    from repowise.core.analysis.security_scan import SECURITY_SCANNER_VERSION
+
     return state.get("security_scanner_version") != SECURITY_SCANNER_VERSION
 
 
@@ -1268,6 +1384,8 @@ def rescan_security_if_changed(repo_path: Any, state: dict, exclude_patterns: li
         return False
     if not run_full_security_rescan(repo_path, exclude_patterns):
         return False
+    from repowise.core.analysis.security_scan import SECURITY_SCANNER_VERSION
+
     state["security_scanner_version"] = SECURITY_SCANNER_VERSION
     return True
 

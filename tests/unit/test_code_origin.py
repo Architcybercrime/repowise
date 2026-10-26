@@ -47,6 +47,10 @@ _OWN_HEADER = (
         ("pkg/external/client.go", "production"),  # external/ only at the root
         ("tests/test_app.py", "test"),
         ("src/app.test.ts", "test"),
+        # a `tests/` folder inside a JS-family `src` tree is a product feature
+        ("packages/web/src/app/repos/[id]/tests/page.tsx", "production"),
+        ("packages/web/src/components/tests/tests-view.tsx", "production"),
+        ("packages/web/src/components/tests/tests-view.test.tsx", "test"),
         ("vendor/github.com/x/y.go", "vendored"),
         ("web/node_modules/lodash/index.js", "vendored"),
         ("static/bower_components/jquery/jquery.js", "vendored"),
@@ -63,6 +67,10 @@ _OWN_HEADER = (
         ("src/tutorials/steps.py", "production"),
         ("examples/a.py", "docs_example"),
         ("docs/examples/a.py", "docs_example"),
+        # A product's own docs routes ship; only a root docs tree is docs.
+        ("app/docs/page.tsx", "production"),
+        ("src/pages/docs/[slug].tsx", "production"),
+        ("pkg/docs_src/handler.py", "production"),
         ("examples/tutorial/app.py", "docs_example"),
         ("example/main.go", "docs_example"),
         ("samples/hello/Program.cs", "docs_example"),
@@ -70,7 +78,22 @@ _OWN_HEADER = (
         ("tutorial_01/app.py", "docs_example"),
         ("scripts/release.py", "tooling"),
         (".github/scripts/label.js", "tooling"),
+        # Browser scripts a served static tree ships are product code.
+        ("src/main/resources/static/scripts/pages/OwnerDetailsPage.js", "production"),
+        ("public/scripts/app.js", "production"),
+        ("scripts/public/seed.py", "tooling"),
         ("tools/gen.go", "tooling"),
+        ("eng/tools/gen.cs", "tooling"),
+        ("hack/tools/main.go", "tooling"),
+        ("ci/tools/lint.py", "tooling"),
+        ("Tools/Gen/Program.cs", "tooling"),
+        ("build/tools/gen.py", "tooling"),
+        # A ``tools/`` folder inside the product is its own code.
+        ("lib/ai/tools/get-weather.ts", "production"),
+        ("src/tools/search.py", "production"),
+        ("pkg/tools/client.go", "production"),
+        ("src/main/java/com/x/tools/HttpUtil.java", "production"),
+        ("modal_app/security/tools/gitleaks.py", "production"),
         # Dart's ``tool/`` (flutter samples' CI scripts), but not a shipped one.
         ("tool/ci_script.dart", "tooling"),
         ("desktop_photo_search/material/tool/grind.dart", "tooling"),
@@ -88,6 +111,8 @@ _OWN_HEADER = (
         ("fabfile.py", "tooling"),
         ("eslint.config.mjs", "tooling"),
         ("db/migrate/20240101_add_users.rb", "tooling"),
+        ("db/data_migrations/20240101_backfill.rb", "tooling"),
+        ("src/django_test_migrations/logic.py", "production"),
         ("src/__generated__/schema.ts", "generated"),
         ("api/user_pb2.py", "generated"),
         ("api/user_grpc.pb.go", "generated"),
@@ -104,6 +129,13 @@ _OWN_HEADER = (
         ("x-pack/inference/src/main/java/org/x/external/http/Sender.java", "production"),
         ("src/pkg/external/client.py", "production"),
         ("sdk/llms/src/providers/vendors/openai.ts", "production"),
+        # Python packages that ship copied libraries under _vendor/
+        ("src/pip/_vendor/rich/console.py", "vendored"),
+        ("setuptools/_vendor/packaging/version.py", "vendored"),
+        ("src/poetry/core/_vendor/lark/lark.py", "vendored"),
+        ("src/app/_vendors/client.py", "production"),
+        ("src/app/my_vendor/client.py", "production"),
+        ("src/app/_vendor.py", "production"),
         # the Dart SDK headers a Flutter FFI plugin vendors under dart-sdk/
         ("pedometer/src/dart-sdk/include/dart_tools_api.h", "vendored"),
         ("src/dart-sdk/include/internal/dart_api_dl_impl.h", "vendored"),
@@ -136,6 +168,14 @@ _OWN_HEADER = (
         ("dist/Main.Bundle.JS", "generated"),
         ("src/Forms/Main.designer.cs", "generated"),
         ("src/logging/diagnostic-support-bundle.ts", "production"),
+        # a library release unpacked in a Salesforce static resource, or its source mirror
+        ("force-app/main/default/staticresources/Libs/arbor-v0.92/src/etc.js", "vendored"),
+        ("StaticResourceSources/arbor-v0.92/lib/arbor.js", "vendored"),
+        ("src/staticresources/jquery-ui-1.12.1/ui.js", "vendored"),
+        ("force-app/main/default/staticresources/npsp-slds/modal.js", "production"),
+        ("force-app/main/default/staticresources/lmsvf/templates.js", "production"),
+        ("static/arbor-v0.92/src/etc.js", "production"),  # static resources only
+        ("src/api/v1.2/handler.js", "production"),
     ],
 )
 def test_path_rules(path: str, expected: str) -> None:
@@ -283,10 +323,22 @@ def test_path_only_vendored_or_generated() -> None:
     assert not is_vendored_or_generated_path("src/Monaco/monacoSRC/min/vs/loader.js")
     assert not is_vendored_or_generated_path("src/pkg/external/client.py")
     assert not is_vendored_or_generated_path("tests/test_app.py")
+    assert is_vendored_or_generated_path("src/staticresources/Libs/arbor-v0.92/src/etc.js")
+    assert not is_vendored_or_generated_path("src/staticresources/Libs/npsp-slds/modal.js")
 
 
 @pytest.mark.parametrize("header", [_JQUERY, _TYPEAHEAD])
-@pytest.mark.parametrize("folder", ["docs/_static", "static/js", "assets", "public/lib"])
+@pytest.mark.parametrize(
+    "folder",
+    [
+        "docs/_static",
+        "static/js",
+        "assets",
+        "public/lib",
+        "force-app/main/default/staticresources/Bootstrap/js",
+        "StaticResourceSources/jquery",
+    ],
+)
 def test_third_party_header_under_asset_dirs_is_vendored(header: str, folder: str) -> None:
     assert code_origin(f"{folder}/lib.js", header) == "vendored"
 
@@ -498,6 +550,16 @@ def test_migration_paths() -> None:
     assert is_migration_path("alembic/versions/abc.py")
     assert not is_migration_path("api/versions/v1.py")
     assert not is_migration_path("src/migrate.py")
+
+
+def test_prefixed_migration_dirs_under_db() -> None:
+    # Rails keeps retired and data migrations in prefixed directories under db/.
+    assert is_migration_path("db/old_migrations/x.rb")
+    assert is_migration_path("db/data_migrations/x.rb")
+    # Elsewhere a name containing or ending in "migrations" is ordinary source.
+    assert not is_migration_path("app/migrations_helper/x.rb")
+    assert not is_migration_path("src/django_test_migrations/logic.py")
+    assert not is_migration_path("django_test_migrations/contrib/unittest_case.py")
 
 
 def test_ship_rank_puts_product_code_first_and_tests_last() -> None:
@@ -730,3 +792,12 @@ def test_cocoapods_target_support_files_are_generated() -> None:
 def test_a_first_party_pods_package_stays_production() -> None:
     assert code_origin("internal/k8s/pods/watcher.go") == "production"
     assert code_origin("pods/support/files.go") == "production"
+
+
+def test_a_nested_docs_root_counts_only_beside_its_site_config(tmp_path) -> None:
+    _docs_site(tmp_path, "website", "docusaurus.config.js")
+    (tmp_path / "website" / "docs").mkdir()
+    (tmp_path / "app" / "docs").mkdir(parents=True)
+    assert code_origin("website/docs/examples/a.ts", repo_root=tmp_path) == "docs_example"
+    assert code_origin("app/docs/page.tsx", repo_root=tmp_path) == "production"
+    assert code_origin("docs/guide/a.py", repo_root=tmp_path) == "docs_example"

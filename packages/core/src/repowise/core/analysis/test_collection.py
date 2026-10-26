@@ -160,8 +160,9 @@ def plan_scopes(
     reading the checkout.
     """
     from ..test_paths import is_test_related_path
-    from .fixture_readers import with_fixture_readers
+    from .fixture_readers import with_data_file_readers, with_fixture_readers
     from .selection_scopes import (
+        is_fixture_data,
         is_manifest,
         keeps_full_run,
         needs_namers,
@@ -184,6 +185,13 @@ def plan_scopes(
             if is_code_file(p):
                 (test_code if is_test_related_path(p) else other).append(p)
         namers = with_fixture_readers(namers, test_code, other, checkout.read, checkout.holding)
+        # A fixture data file runs the test code reading it; one no test code is
+        # known to read, or that production code names, keeps its full run.
+        if fixtures := [p for p in asked if is_fixture_data(p, config)]:
+            readers = with_data_file_readers(
+                fixtures, namers, test_code, other, checkout.read, checkout.holding
+            )
+            namers = {**{f: n for f, n in namers.items() if f not in fixtures}, **readers}
     scopes = trigger_scopes(paths, checkout.tracked, namers, config)
     routes = sorted({r for scope in scopes.values() for r in scope.routes} - set(paths))
     return Plan(namers, scopes, routes)
@@ -239,7 +247,7 @@ async def collect(
     lets that narrowing read the modules a conftest takes names from.
     """
     from ..persistence.crud import get_health_metrics, get_test_coverage_summary
-    from ..persistence.crud.analysis.coverage_map import MAX_TEST_COVERAGE_ROWS
+    from ..persistence.crud.analysis.coverage_map import map_is_truncated
 
     out = empty_result(len(change.files) + len(change.deleted))
     if not out["changed_files"]:
@@ -248,7 +256,7 @@ async def collect(
 
     summary = await get_test_coverage_summary(session, repo_id)
     out["map_empty"] = summary.get("pair_count", 0) == 0
-    out["map_truncated"] = summary.get("pair_count", 0) >= MAX_TEST_COVERAGE_ROWS
+    out["map_truncated"] = map_is_truncated(summary)
     out["measured_commit"] = measured = summary.get("ingested_commit_sha")
     out["map_current"] = out["map_empty"] or measured in {change.base, change.head} - {None}
 
@@ -346,7 +354,9 @@ def _gap_routes(repo_path, change, config, repo_keys: set[str], out: dict) -> li
     plan = plan_gap(gap, config, [*change.files, *change.deleted])
     if plan.candidates:
         old, new = out["indexed_commit"], change.base
-        specs = [(rev, p) for p in plan.candidates for rev in (old, new)]
+        # ``rev:./path`` reads from the checkout, which can sit below the git
+        # top level; plain ``rev:path`` would miss and read as absent.
+        specs = [(rev, f"./{p}") for p in plan.candidates for rev in (old, new)]
         blobs = read_blobs(str(repo_path), specs)
         # Unreadable means nothing was compared, so every candidate may have moved.
         unread = _unread(repo_path, specs, blobs)
@@ -354,8 +364,8 @@ def _gap_routes(repo_path, change, config, repo_keys: set[str], out: dict) -> li
             p
             for p in plan.candidates
             if blobs is None
-            or p in unread
-            or edges_may_differ(p, blobs.get((old, p)), blobs.get((new, p)))
+            or f"./{p}" in unread
+            or edges_may_differ(p, blobs.get((old, f"./{p}")), blobs.get((new, f"./{p}")))
         ]
         plan = with_rewired(plan, rewired, repo_keys)
     out["gap"] = plan
@@ -617,7 +627,10 @@ async def _graph_candidates(
     texts = pytest_texts or {}
     test_files = {f for f in await load_test_files(session, repo_id) if is_code_file(f)}
     graph = await load_import_graph(session, repo_id)
-    found, entries, calls = await _tier_picks(session, repo_id, targets, test_files, roots, graph)
+    wide = graph.with_package_inits()
+    found, entries, calls = await _tier_picks(
+        session, repo_id, targets, test_files, roots, graph, wide
+    )
     seeds = {t for picks in found.values() for t in picks}
     parents, parent_entries = await _test_importers(session, repo_id, seeds, test_files, graph)
     out, notes = await scoped_candidates(
@@ -634,7 +647,7 @@ async def _graph_candidates(
     )
     importers = {test: sorted(found_by) for test, found_by in parents.items()}
     sources = targets if changed is None else [t for t in targets if t in changed]
-    hops = _test_hops(out, calls, graph.hops(sources), set(sources))
+    hops = _test_hops(out, calls, wide.hops(sources), set(sources))
     return GraphCandidates(out, importers, notes, hops)
 
 
@@ -649,7 +662,8 @@ def _test_hops(
     0 for a changed test, else the fewer of the call walk's hops (*calls*, per
     target) and the file-dependency hops (*imports*, :meth:`ImportGraph.hops`
     from *sources*), so 1 is a direct edge. A scope or gap route is not a
-    source. Ordering only: no test is selected for it. A test neither
+    source. Ordering and the headline count only (``test_selection``'s
+    ``IMPORT_CLOSURE_HOPS``): no test is selected or dropped for it. A test neither
     measures (a filename guess, one reached only through a route) is absent.
     """
     best: dict[str, int] = {}
@@ -678,35 +692,44 @@ async def _tier_picks(
     test_files: set[str],
     roots: PytestRoots | None,
     graph=None,
+    wide=None,
 ) -> tuple[dict[str, dict[str, str]], dict[str, dict], dict[str, Mapping[str, Any]]]:
     """``{target: {test file: via}}``: a changed test itself, then the call and import walks.
 
     Also ``{target: {test file: the files it was reached through}}`` from the
-    import walk, and the call walk's distances per target.
+    import walk, and the call walk's distances per target. *wide* is *graph*
+    with the package ``__init__.py`` edges (:meth:`ImportGraph.with_package_inits`):
+    a test only its walk finds is a ``package-init`` pick.
     """
     from .test_reachability import tests_reaching_by_tier
-    from .test_selection import is_runnable_test
+    from .test_selection import PACKAGE_INIT_VIA, is_runnable_test
 
     reaching = await tests_reaching_by_tier(
         session, repo_id, targets, test_files=test_files, import_graph=graph
     )
-    importers = await tests_reaching_by_tier(
-        session,
-        repo_id,
-        targets,
-        call_depth=0,
-        import_depth=_IMPORT_CLOSURE_DEPTH,
-        test_files=test_files,
-        import_graph=graph,
-    )
+    walks = [(reaching, None)]
+    imports = [(graph, "import-graph")] + ([(wide, PACKAGE_INIT_VIA)] if wide is not None else [])
+    for g, via in imports:
+        walked = await tests_reaching_by_tier(
+            session,
+            repo_id,
+            targets,
+            call_depth=0,
+            import_depth=_IMPORT_CLOSURE_DEPTH,
+            test_files=test_files,
+            import_graph=g,
+        )
+        walks.append((walked, via))
+    # The widest import walk's routes: a superset of the plain one's.
+    entries = {t: dict(r.entries or {}) for t, r in walks[-1][0].items()}
     found: dict[str, dict[str, str]] = {}
-    entries = {t: dict(r.entries or {}) for t, r in importers.items()}
     for target in targets:
         picks = found.setdefault(target, {})
         # A test the index has not seen yet (new in this change) is still its own pick.
         if target in test_files or is_runnable_test(target, roots):
             picks[target] = "changed-test"
-        for reached, via in ((reaching.get(target), None), (importers.get(target), "import-graph")):
+        for walked, via in walks:
+            reached = walked.get(target)
             for t in _all_tests(reached) if reached else ():
                 picks.setdefault(t, via or reached.via)
     calls = {t: r.reach for t, r in reaching.items() if r.reach}

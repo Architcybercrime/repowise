@@ -36,8 +36,10 @@ from .test_paths import is_test_related_path
 
 __all__ = [
     "CODE_ORIGINS",
+    "CONTENT_TEST_SUFFIXES",
     "CodeOrigin",
     "code_origin",
+    "declares_test",
     "is_build_file",
     "is_generated_header",
     "is_migration_path",
@@ -303,6 +305,9 @@ _VENDORED_DIR_TOKENS = frozenset(
         "node_modules",
         "bower_components",
         "site-packages",
+        # Python packages that ship copied libraries inside themselves
+        # (pip's ``src/pip/_vendor/``, setuptools, poetry-core).
+        "_vendor",
         # The Dart SDK's embedding headers that Flutter FFI plugins keep a copy
         # of (``src/dart-sdk/include/dart_api_dl.h``).
         "dart-sdk",
@@ -336,15 +341,34 @@ def _is_vendored_path(lowered_name: str, dirs: list[str]) -> bool:
         return True
     if _DEPS_DIR in dirs[:-1] and lowered_name.endswith(_deps_suffixes()):
         return True
-    return lowered_name.endswith(_MINIFIED_SUFFIXES)
+    return lowered_name.endswith(_MINIFIED_SUFFIXES) or _in_static_release_dir(dirs)
+
+
+# A library unpacked under its release name in a static resource
+# (``staticresources/arbor-v0.92/``). Elsewhere a versioned folder is as often an
+# API version or the repository's own release. Ceiling: a team's own resource
+# folder named like a release (``app-v2.1/``) reads as vendored too.
+_RELEASE_DIR_RE = re.compile(r"^[a-z][\w.-]*?[-_.]v?\d+(?:\.\d+)+$")
+
+
+def _in_static_release_dir(dirs: list[str]) -> bool:
+    for i, d in enumerate(dirs):
+        if d in _STATIC_RESOURCE_DIRS:
+            return any(_RELEASE_DIR_RE.match(s) for s in dirs[i + 1 :])
+    return False
 
 
 # A copied library is recognisable by its header only in the directories a
 # site serves assets from. Anywhere else a license header is far more often
 # the repository's own.
 # ``min/`` is a minified distribution tree (Monaco ships as ``min/vs/...``); the
-# header rule below keeps a first-party ``src/min/`` out.
-_ASSET_DIR_TOKENS = frozenset({"docs", "doc", "static", "assets", "public", "_static", "min"})
+# header rule below keeps a first-party ``src/min/`` out. Salesforce serves its
+# static resources by name, and NPSP-style repos keep their sources in a mirror.
+_STATIC_RESOURCE_DIRS = frozenset({"staticresources", "staticresourcesources"})
+_ASSET_DIR_TOKENS = (
+    frozenset({"docs", "doc", "static", "assets", "public", "_static", "min"})
+    | _STATIC_RESOURCE_DIRS
+)
 _HEADER_LINES = 20
 _LICENSE_RE = re.compile(
     r"copyright|\(c\)|©|@license|licen[cs]ed\s+under|released\s+under|\bMIT\b",
@@ -523,14 +547,13 @@ def is_build_file(path: str) -> bool:
 # Docs, examples, tooling
 # --------------------------------------------------------------------------
 
-# Docs roots count at any depth. Docs are the plural and FastAPI's ``docs_src``
-# only: a singular ``doc/`` is as often a shipped package (cobra's ``doc``
-# generates man pages) as a documentation tree.
+# Plural only: a singular ``doc/`` is as often a shipped package. Where they
+# count is :func:`_is_docs_example`'s rule.
 _DOCS_ROOT_TOKENS = frozenset({"docs", "docs_src"})
 # Examples as ``support_paths`` reads them, less the benchmark harnesses, which
 # run the system (tooling below). Unlike ``support_paths`` these count only as
-# the first segment or directly under a docs root: ``src/pkg/examples/`` is
-# as often shipped code (an example registry, a runner) as a sample.
+# the first segment or under a docs root: ``src/pkg/examples/`` is as often
+# shipped code (an example registry, a runner) as a sample.
 _EXAMPLE_TOKENS = EXAMPLE_DIR_TOKENS - {"bench", "benches", "benchmarks"}
 _TUTORIAL_PREFIX = "tutorial"
 
@@ -615,20 +638,28 @@ def _is_docs_site(folder: str, paired: bool) -> bool:
 def _is_docs_example(
     normalized: str, dirs: list[str], repo_root: str | os.PathLike[str] | None
 ) -> bool:
-    # Anything under a docs root already counts, examples beneath it included.
+    """A docs root or example folder as the first segment, a build tool's example
+    target, or a docs folder deeper beside a docs-site generator's config. A
+    nested ``app/docs/`` with no such config is the product's own docs route."""
     if (
-        any(d in _DOCS_ROOT_TOKENS for d in dirs)
-        or bool(dirs and _is_example_dir(dirs[0]))
+        bool(dirs and (dirs[0] in _DOCS_ROOT_TOKENS or _is_example_dir(dirs[0])))
         or _is_tool_example(normalized, dirs)
     ):
         return True
     if repo_root is None:
         return False
     parts = normalized.split("/")
+    root = os.fspath(repo_root)
+
+    def site(i: int, paired: bool) -> bool:
+        return _is_docs_site(os.path.join(root, *parts[:i]), paired)
+
     return any(
-        (d in _DOCS_SITE_NAMES or _DOCS_SITE_SUFFIXED_RE.match(d))
-        and _is_docs_site(
-            os.path.join(os.fspath(repo_root), *parts[: i + 1]), d in _DOCS_SITE_NAMES
+        # A nested docs root beside its site's config, read from its parent.
+        (d in _DOCS_ROOT_TOKENS and site(i, False))
+        or (
+            (d in _DOCS_SITE_NAMES or _DOCS_SITE_SUFFIXED_RE.match(d))
+            and site(i + 1, d in _DOCS_SITE_NAMES)
         )
         for i, d in enumerate(dirs)
     )
@@ -665,6 +696,13 @@ _TOOLING_ROOT_DIRS = frozenset(
 # directory with another name is recognised only by its sibling ``env.py``,
 # which a path-only classifier cannot see.
 _MIGRATION_DIR = "migrations"
+# Rails also keeps migration-like scripts in ``db/`` directories named with a
+# prefix: retired one-shot scripts in ``db/old_migrations/``, data migrations in
+# ``db/data_migrations/``. Only directly under ``db/``: elsewhere a name ending
+# in ``_migrations`` is as likely a package's own source
+# (``src/django_test_migrations/``).
+_MIGRATION_DB_DIR = "db"
+_MIGRATION_DB_SUBDIR_SUFFIX = "_migrations"
 _MIGRATION_DIR_PAIRS = frozenset({("db", "migrate"), ("alembic", "versions")})
 _TOOLING_ROOT_NAMES = frozenset({"fabfile.py"})
 # Benchmarks kept beside the code they measure (abseil's
@@ -727,7 +765,14 @@ def is_vendored_or_generated_path(path: str) -> bool:
 
 
 def _is_migration_dir(dirs: list[str]) -> bool:
-    return _MIGRATION_DIR in dirs or any(pair in _MIGRATION_DIR_PAIRS for pair in pairwise(dirs))
+    return (
+        _MIGRATION_DIR in dirs
+        or any(pair in _MIGRATION_DIR_PAIRS for pair in pairwise(dirs))
+        or any(
+            parent == _MIGRATION_DB_DIR and child.endswith(_MIGRATION_DB_SUBDIR_SUFFIX)
+            for parent, child in pairwise(dirs)
+        )
+    )
 
 
 def is_migration_path(path: str) -> bool:
@@ -737,9 +782,30 @@ def is_migration_path(path: str) -> bool:
     return split is not None and _is_migration_dir(split[2])
 
 
+# A ``scripts/`` folder inside a served static tree holds the browser scripts
+# the product ships (Spring Boot's ``resources/static/scripts``, a ``public/``
+# folder), not developer tooling.
+_SERVED_DIRS = frozenset({"static", "public", "assets", "_static"})
+_SERVED_SCRIPTS_DIR = "scripts"
+# ``tools/`` is developer tooling at the repository root or under an engineering
+# folder (``eng/tools``, ``hack/tools``). Deeper it is as often the product's own
+# code: AI SDK tools in ``lib/ai/tools``, ``src/tools``, ``pkg/tools``. Ceiling:
+# path-only, so a monorepo member's own ``tools/`` reads as production.
+_TOOLS_DIR = "tools"
+_TOOLS_PARENT_DIRS = frozenset({"eng", "hack", "ci", "dev"})
+
+
+def _is_tooling_dir(i: int, d: str, dirs: list[str]) -> bool:
+    if d not in _TOOLING_DIR_TOKENS:
+        return False
+    if d == _TOOLS_DIR:
+        return i == 0 or dirs[i - 1] in _TOOLS_PARENT_DIRS
+    return d != _SERVED_SCRIPTS_DIR or _SERVED_DIRS.isdisjoint(dirs[:i])
+
+
 def _is_tooling(name: str, dirs: list[str]) -> bool:
     return (
-        any(d in _TOOLING_DIR_TOKENS for d in dirs)
+        any(_is_tooling_dir(i, d, dirs) for i, d in enumerate(dirs))
         or bool(dirs and dirs[0] in _TOOLING_ROOT_DIRS)
         or _is_migration_dir(dirs)
         or (not dirs and name in _TOOLING_ROOT_NAMES)
@@ -778,7 +844,8 @@ def code_origin(
     path.
 
     *is_test* is the flag ingestion stored, when the caller has it. ``None``
-    derives it from the path with the shared test classifier.
+    derives it from the path with the shared test classifier, and from *text*
+    where the content decides (:func:`declares_test`).
 
     *project* is the repository's name, so its own release banner is not
     taken for someone else's.
@@ -801,7 +868,7 @@ def code_origin(
         and _third_party_header(header, project)
     ):
         return "vendored"
-    return _maintained_origin(normalized, name, dirs, is_test, repo_root)
+    return _maintained_origin(normalized, name, dirs, is_test, repo_root, header)
 
 
 def _is_generated_content(name: str, dirs: list[str], header: str) -> bool:
@@ -812,18 +879,52 @@ def _is_generated_content(name: str, dirs: list[str], header: str) -> bool:
     )
 
 
+# --------------------------------------------------------------------------
+# Test, by content
+# --------------------------------------------------------------------------
+
+#: Suffixes whose test status the file's content can decide.
+CONTENT_TEST_SUFFIXES: tuple[str, ...] = (".cls",)
+# An Apex ``@IsTest`` class is test code whatever its name. Comments and strings
+# are blanked first: ApexDoc and annotation arguments can quote the annotation.
+_APEX_CLASS_KEYWORD_RE = re.compile(r"\bclass\b", re.IGNORECASE)
+_APEX_IS_TEST_RE = re.compile(r"@istest\b", re.IGNORECASE)
+
+
+def declares_test(path: str, text: str | bytes | None) -> bool:
+    """Whether *text*, the head of the file at *path*, marks it test code.
+
+    An Apex class annotated ``@IsTest`` is; the annotation must sit before the
+    top-level ``class`` keyword, inside the first 4 KB like every content rule
+    here.
+    """
+    if not path.lower().endswith(CONTENT_TEST_SUFFIXES):
+        return False
+    # Imported here: the ingestion package imports this module.
+    from .ingestion.framework_routes import apex_code
+
+    code = apex_code(_header_text(text))
+    keyword = _APEX_CLASS_KEYWORD_RE.search(code)
+    return keyword is not None and _APEX_IS_TEST_RE.search(code, 0, keyword.start()) is not None
+
+
 def _maintained_origin(
     normalized: str,
     name: str,
     dirs: list[str],
     is_test: bool | None,
     repo_root: str | os.PathLike[str] | None,
+    header: str = "",
 ) -> CodeOrigin:
     """The origin of code this repository maintains: build, test, docs or
     examples, tooling, or production, in that precedence."""
     if _is_build_name(name, dirs, as_origin=True):
         return "build"
-    if is_test if is_test is not None else is_test_related_path(normalized):
+    if (
+        is_test
+        if is_test is not None
+        else is_test_related_path(normalized) or declares_test(normalized, header)
+    ):
         return "test"
     if _is_docs_example(normalized, dirs, repo_root):
         return "docs_example"

@@ -55,6 +55,7 @@ from .graph import (
 )
 from .health import (
     _analyzed_commit,
+    _analyzed_repo_path,
     refresh_governance_findings,
     save_full_health_report,
     snapshot_health_from_store,
@@ -84,6 +85,7 @@ from .sweeps import (
     _symbol_names_by_file,
     sweep_absent_cycle_pages,
     sweep_absent_symbol_spotlights,
+    sweep_deselected_pages,
     sweep_retired_pages,
     sweep_superseded_generated_pages,
 )

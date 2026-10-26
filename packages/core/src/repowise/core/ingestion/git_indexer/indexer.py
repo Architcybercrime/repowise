@@ -130,22 +130,6 @@ def _available_memory_bytes() -> int | None:
         return None
 
 
-def _release_repo(repo: Any) -> None:
-    """Release *repo*'s git subprocesses and pack maps, like ``Repo.close()``.
-
-    ``Repo.close()`` also runs two full ``gc.collect()`` passes on Windows so a
-    caller can delete the checkout. Nothing here deletes it, and by the end of
-    the git stage the heap holds the whole parsed graph, so each pass costs
-    seconds: one close per worker thread put ~18 s on PowerToys' critical path.
-    """
-    import gitdb.util
-
-    with contextlib.suppress(Exception):
-        repo.git.clear_cache()
-    with contextlib.suppress(Exception):
-        gitdb.util.mman.collect()
-
-
 def git_worker_count(
     pending: int,
     *,
@@ -435,7 +419,7 @@ class GitIndexer:
         # History-tier rows take none of the code signals.
         code_results = [meta for meta in results if meta["file_path"] not in history_files]
         merge_code_signals(code_results, walk, prior_defects, trace_index)
-        commit_rows, commit_file_rows = build_commit_tables(commit_sink)
+        commit_rows, commit_file_rows = build_commit_tables(commit_sink, self._scope_prefix(repo))
 
         duration = time.monotonic() - start
         hotspots = sum(1 for m in results if m.get("is_hotspot", False))
@@ -457,7 +441,7 @@ class GitIndexer:
                 indexable_files, code_results, sample, self.commit_limit, workers
             ),
         )
-        _release_repo(repo)
+        repo.close()
 
         logger.info(
             "Git indexing complete",
@@ -695,7 +679,7 @@ class GitIndexer:
         if owner_task is not None:
             owner_task.remove_done_callback(_cleanup_executor)
         _cleanup_executor()
-        _release_repo(repo)
+        repo.close()
         return results
 
     def _wants_idle_refresh(
@@ -761,6 +745,13 @@ class GitIndexer:
         drawn from the same tracked-file set (the parsed files miss .rst,
         LICENSE and the like), and the co-change walk reads that set too.
         """
+        # Callers hand over paths relative to the indexed directory; git and the
+        # rows this indexer writes are keyed relative to the repository root.
+        module_prefix = self._module_prefix(repo)
+        if module_prefix:
+            changed_file_paths = [f"{module_prefix}/{p}" for p in changed_file_paths]
+            if all_files:
+                all_files = {f"{module_prefix}/{p}" for p in all_files}
         tier_paths = (self._get_tracked_files(repo) or all_files) if all_files else None
         history_files = _history_tier_files(
             self.repo_path,
@@ -950,7 +941,7 @@ class GitIndexer:
                 provenance_classifier=self._provenance_classifier(),
             )
             rows = build_commit_rows(sink)
-            files = build_commit_file_rows(sink)
+            files = build_commit_file_rows(sink, self._scope_prefix(repo))
             # Only after both succeed: the sink is the caller's list, and a
             # partial extend would outlive the failure that caused it.
             if file_rows_sink is not None:
@@ -1038,7 +1029,7 @@ class GitIndexer:
 
     def capture_new_fix_events(
         self, *, known_shas: set[str] | None = None
-    ) -> tuple[list[dict], int, set[str]]:
+    ) -> tuple[list[dict], int, set[str], set[str]]:
         """Build ``fix_events`` rows for fix commits not already persisted.
 
         The incremental counterpart to the tracing ``index_repo`` runs inline,
@@ -1047,16 +1038,16 @@ class GitIndexer:
         the rest. An update with no new fix commits does the walk and stops,
         which is why it stays inside the +1s budget.
 
-        Returns ``(rows, oldest_fix_ts, tracked_paths)``. Both trailing values
-        come back even when there are no new rows, because the caller still has
-        two prunes to do: events that aged out of the window, and events for
-        files that no longer exist. A fresh index never produces the latter, so
-        without that second prune an update accumulates rows for deleted files
-        and drifts away from what a re-index would hold.
+        Returns ``(rows, oldest_fix_ts, tracked_paths, retracted_shas)``. The
+        trailing values come back even when there are no new rows, because the
+        caller still has three prunes to do: events that aged out of the window,
+        events for files that no longer exist, and *known_shas* the fix rule no
+        longer names. A fresh index produces none of them, so without the prunes
+        an update drifts away from what a re-index would hold.
         """
         repo = self._get_repo()
         if repo is None:
-            return [], 0, set()
+            return [], 0, set(), set()
         try:
             tracked = {fp for fp in self._get_tracked_files(repo) if not _should_skip_index(fp)}
             walk = collect_fix_commits(
@@ -1067,10 +1058,13 @@ class GitIndexer:
             )
             rows, ok = self._build_fix_events(walk)
             self._record_git_episodes(walk)
-            return rows, (walk.oldest_fix_ts if ok else 0), tracked
+            retracted = set()
+            if ok and walk.shas is not None:
+                retracted = set(known_shas or ()) - walk.shas
+            return rows, (walk.oldest_fix_ts if ok else 0), tracked, retracted
         except Exception as exc:
             logger.debug("incremental_fix_events_failed", error=str(exc))
-            return [], 0, set()
+            return [], 0, set(), set()
         finally:
             with contextlib.suppress(Exception):
                 repo.close()
@@ -1106,7 +1100,7 @@ class GitIndexer:
             with timed(timings, "git.repo_totals"):
                 totals = capture_repo_totals(repo)
         finally:
-            _release_repo(repo)
+            repo.close()
         return fix_walk, prior_defects, totals
 
     def _build_fix_events(self, walk: FixWalk) -> tuple[list[dict], bool]:
@@ -1259,9 +1253,9 @@ class GitIndexer:
         def get_thread_repo() -> Any:
             repo = getattr(tls, "repo", None)
             if repo is None:
-                import git as gitpython
+                from repowise.core.git_repo import Repo
 
-                repo = gitpython.Repo(self.repo_path, search_parent_directories=True)
+                repo = Repo(self.repo_path, search_parent_directories=True)
                 tls.repo = repo
                 with lock:
                     created.append(repo)
@@ -1271,15 +1265,15 @@ class GitIndexer:
             with lock:
                 repos, created[:] = list(created), []
             for repo in repos:
-                _release_repo(repo)
+                repo.close()
 
         return get_thread_repo, close_all
 
     def _get_repo(self) -> Any | None:
         try:
-            import git as gitpython
+            from repowise.core.git_repo import Repo
 
-            return gitpython.Repo(self.repo_path, search_parent_directories=True)
+            return Repo(self.repo_path, search_parent_directories=True)
         except Exception as exc:
             logger.warning(
                 "Git unavailable or not a repository",
@@ -1350,7 +1344,8 @@ class GitIndexer:
 
     def _get_tracked_files(self, repo: Any) -> list[str]:
         try:
-            output = repo.git.ls_files()
+            prefix = self._scope_prefix(repo)
+            output = repo.git.ls_files("--", prefix) if prefix else repo.git.ls_files()
             paths = [f for f in output.splitlines() if f.strip()]
             if self._exclude.patterns:
                 paths = [p for p in paths if not self._exclude.match_file(p)]
@@ -1358,6 +1353,30 @@ class GitIndexer:
         except Exception as exc:
             logger.warning("Failed to list tracked files", error=str(exc))
             return []
+
+    def _module_prefix(self, repo: Any) -> str:
+        """Where the indexed path sits inside the git working tree ("" at the root).
+
+        Git, and so every key this indexer writes, is relative to the root; the
+        index above it is relative to the indexed directory.
+        """
+        from ..change_detector import _prefix_in_repo
+
+        return _prefix_in_repo(repo, self.repo_path)
+
+    def _scope_prefix(self, repo: Any) -> str:
+        """Directory whose files get git rows, "" for the whole repository.
+
+        An index of a subdirectory records history for that subdirectory only.
+        Without this, indexing one module of a large repository wrote a row per
+        file of the whole repository, and spent most of the git pass on files
+        nothing could ever look up. ``REPOWISE_GIT_SCOPE=repo`` restores the
+        whole-repository behaviour, which keeps co-change partners that live
+        outside the module.
+        """
+        if os.environ.get("REPOWISE_GIT_SCOPE", "module").strip().lower() == "repo":
+            return ""
+        return self._module_prefix(repo)
 
     # ------------------------------------------------------------------
     # Backward-compatible instance shims

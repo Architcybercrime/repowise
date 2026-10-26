@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from .file_scores import FileScoreDelta
+
 DeltaStatus = Literal[
     "available",
     "partial",
@@ -45,6 +47,9 @@ ATTRIBUTION_CONFIDENCE: dict[str, str] = {
     "context_change": "low",
     "unknown": "low",
 }
+
+#: Bases that place a finding away from the lines the change wrote.
+INCIDENTAL_BASES = frozenset({"file_change", "context_change", "unknown"})
 
 SEVERITY_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
@@ -150,6 +155,9 @@ class ChangeFinding:
     #: ``{"path", "symbol"}`` the finding's code was moved from, when it moved.
     moved_from: dict[str, str] | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
+    #: The head finding's line-free public id (``finding_public_id``), the same
+    #: id the index gives it, so it holds across commits and comparisons.
+    finding_id: str = ""
 
 
 @dataclass(slots=True)
@@ -193,9 +201,15 @@ class ChangeHealthDelta:
     moved_total: int = 0
     #: ``{path: reason}``. Any reason outside ``NO_CODE_GAP`` means the run was partial.
     skipped: dict[str, str] = field(default_factory=dict)
+    #: Deleted files compared on the base side, and the files their code moved to.
+    moved_to: dict[str, list[str]] = field(default_factory=dict)
     timing_ms: float = 0.0
     cache_hit: bool = False
     limits: list[str] = field(default_factory=list)
+    #: Where centrality gates read dependents: ``index_dependents`` or ``changed_files``.
+    context: str = "changed_files"
+    #: Per-file scores on both sides, largest structure move first.
+    files: list[FileScoreDelta] = field(default_factory=list)
 
     @property
     def introduced_total(self) -> int:

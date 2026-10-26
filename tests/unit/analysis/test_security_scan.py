@@ -691,6 +691,26 @@ class TestScanFile:
             ("a.py", 'key = hashlib.sha1(f"({a})".encode(), usedforsecurity=False)\n', False),
             ("a.py", 'key = hashlib.sha1(b"usedforsecurity=False")\n', True),
             ("a.py", "key = hashlib.sha1(\n    text.encode()\n)\nok = sha256(b, usedforsecurity=False)\n", True),
+            # Cut to a few characters where it is computed, or kept as a key: an id.
+            ("a.py", "short = hashlib.md5(name.encode()).hexdigest()[:8]\n", False),
+            ("a.py", "short = hashlib.sha1(name.encode()).hexdigest()[0:12]\n", False),
+            ("a.js", 'const id = crypto.createHash("md5").update(s).digest("hex").slice(0, 8);\n', False),
+            ("a.py", "etag = hashlib.md5(body).hexdigest()\n", False),
+            ("a.py", "cache_key = hashlib.sha1(url.encode()).hexdigest()\n", False),
+            ("a.ts", 'const cacheKey = createHash("md5").update(url).digest("hex");\n', False),
+            ("a.py", 'slug = title + "-" + md5(title.encode()).hexdigest()\n', False),
+            # A credential stays a finding, truncated or named as a key.
+            ("a.py", "pw = hashlib.md5(password.encode()).hexdigest()[:8]\n", True),
+            ("a.py", "cache_key = hashlib.md5(token).hexdigest()\n", True),
+            ("a.py", "digest = hashlib.md5(data).hexdigest()[8:]\n", True),
+            ("a.py", "full = hashlib.md5(data).digest()\n", True),
+            ("a.py", "pw = hashlib.md5(p.encode()).hexdigest()[:8]\n", True),
+            ("a.py", "whole = hashlib.md5(data).hexdigest()[:32]\n", True),
+            ("a.py", "mac = hmac.new(k, m, hashlib.md5).hexdigest()[:8]\n", True),
+            ("a.py", "if cache_key in seen: h = hashlib.md5(data).hexdigest()\n", True),
+            ("a.ts", 'const cacheKey: string = createHash("md5").update(url).digest("hex");\n', False),
+            ("a.py", 'row = {"etag": hashlib.md5(body).hexdigest()}\n', False),
+            ("a.py", "author_slug = hashlib.md5(name.encode()).hexdigest()\n", False),
         ],
     )
     def test_weak_hash_is_an_algorithm_in_use(self, path: str, source: str, expected: bool) -> None:
@@ -974,6 +994,32 @@ class TestScanSource:
         source = "const k = process.env.NEXT_PUBLIC_N8N_API_KEY;\n"
         (hit,) = [f for f in scan_source("config.ts", source) if f["kind"] == "public_env_secret"]
         assert hit["snippet"] == source.strip()
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "VITE_API_TOKEN=\n",
+            'NEXT_PUBLIC_API_SECRET=""\n',
+            "VITE_AUTH_TOKEN=''\n",
+            "VITE_API_TOKEN= # set in .env.local\n",
+        ],
+    )
+    def test_empty_public_env_secret_is_dropped(self, source: str) -> None:
+        assert [f for f in scan_source(".env", source) if f["kind"] == "public_env_secret"] == []
+
+    def test_public_env_secret_with_value_still_fires(self) -> None:
+        hits = [f for f in scan_source(".env", "VITE_API_TOKEN=abc123\n") if f["kind"] == "public_env_secret"]
+        assert len(hits) == 1
+        assert hits[0]["snippet"] == "VITE_API_TOKEN=abc1****"
+
+    def test_public_env_secret_code_read_still_fires(self) -> None:
+        hits = [
+            f
+            for f in scan_source("app.ts", "const t = import.meta.env.VITE_API_TOKEN;\n")
+            if f["kind"] == "public_env_secret"
+        ]
+        assert len(hits) == 1
+        assert hits[0]["snippet"] == "const t = import.meta.env.VITE_API_TOKEN;"
 
     def test_secret_kinds_and_history_gate_are_unchanged(self) -> None:
         from repowise.core.analysis.history_scan import HistorySecurityScanner
@@ -1417,6 +1463,11 @@ class TestSecretPrecision:
             ("src/app.py", 'API_KEY = "prefix-${VAR}-suffix"\n'),
             ("src/app.py", 'TOKEN = "prefix-{{var}}-suffix"\n'),
             ("src/app.py", 'TOKEN = "xxxxxxxxxxxx"\n'),
+            ("classes/RD2_NamingService.cls", "String token = '{!npe03__Donor_Name__c}';\n"),
+            ("pages/Pay.page", '<c:pay accessToken="{!$Credential.OAuthToken}"/>\n'),
+            ("aura/Pay/Pay.cmp", '<c:pay token="{#v.sessionToken}"/>\n'),
+            ("classes/Api.cls", "String token = 'Bearer {!$Credential.OAuthToken}';\n"),
+            ("classes/RegExps.cls", "static final String EXP_NUMBER_TOKEN = '(_D[0-9]+D_)';\n"),
         ],
     )
     def test_elided_or_templated_values_are_not_secrets(self, path: str, source: str) -> None:
@@ -1455,6 +1506,7 @@ class TestSecretPrecision:
         ("source", "kind"),
         [
             ('TOKEN = "xQzRmWpLkVnBtYcH"\n', "hardcoded_secret"),
+            ('TOKEN = "Zx9[a]+Qw8Rt5Yu3"\n', "hardcoded_secret"),
             ('TOKEN = "Bearer eyJhbGciOiJIUzI1NiJ9abc"\n', "hardcoded_secret"),
             ('const val API_TOKEN = "productionAccessKey"\n', "hardcoded_secret"),
             ('password="Tr0ub4dor 3xyz"\n', "hardcoded_password"),
@@ -1553,6 +1605,12 @@ class TestNoAlarmOnCodeThatDoesNotShip:
     def test_declaration_file_holds_no_sink(self) -> None:
         assert self._found("types/react.d.ts", "type T = { __html: SafeHtml };\n") == []
 
+    def test_a_library_release_in_a_static_resource_holds_no_sink(self) -> None:
+        source = 'eval("console.log("+args.join(",")+")")\n'
+        resources = "force-app/main/default/staticresources/Libs"
+        assert self._found(f"{resources}/arbor-v0.92/src/etc.js", source) == []
+        assert self._found(f"{resources}/app/main.js", source) == [("eval_call", "high")]
+
     def test_inner_html_from_a_value_is_still_medium(self) -> None:
         source = "<div dangerouslySetInnerHTML={{__html: foo}} />\n"
         assert self._found("src/view.tsx", source) == [("unsafe_inner_html", "med")]
@@ -1598,6 +1656,27 @@ class TestNoAlarmOnCodeThatDoesNotShip:
     def test_other_scanners_allow_markers_silence_a_secret(self, path: str, marker: str) -> None:
         source = f'key = "{self.KEY}"  {marker}\n'
         assert self._found(path, source) == []
+
+    @pytest.mark.parametrize(
+        ("path", "source"),
+        [
+            ("README.md", "key {key} pragma: allowlist secret\n"),
+            ("README.md", "key {key} <!-- nosec -->\n"),
+            ("README.md", "key {key} # pragma: allowlist secret\n"),
+            ("docs/guide.rst", "key {key} nosec\n"),
+            ("README.md", "pragma: allowlist nextline secret\nkey {key}\n"),
+        ],
+    )
+    def test_prose_allow_markers_need_no_comment_opener(self, path: str, source: str) -> None:
+        assert self._found(path, source.format(key=self.KEY)) == []
+
+    def test_a_word_containing_a_marker_does_not_silence_prose(self) -> None:
+        source = f"key {self.KEY} nosecurity\n"
+        assert self._found("README.md", source) == [("aws_access_key", "high")]
+
+    def test_a_bare_marker_outside_a_comment_still_fires_in_code(self) -> None:
+        source = f'key = "{self.KEY}"  nosec\n'
+        assert self._found("src/settings.py", source) == [("aws_access_key", "high")]
 
     @pytest.mark.parametrize(
         "source",

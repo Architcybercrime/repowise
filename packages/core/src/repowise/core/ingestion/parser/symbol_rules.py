@@ -18,10 +18,12 @@ from ..extractors import (
 )
 from ..extractors.bindings.ts_js import declarator_binds_callable, declarator_value_is_module_ref
 from ..extractors.visibility import (
+    refine_apex_visibility,
     refine_cpp_visibility,
     refine_csharp_visibility,
     refine_java_visibility,
     refine_py_visibility,
+    refine_ruby_visibility,
     refine_rust_visibility,
     refine_ts_visibility,
 )
@@ -54,7 +56,9 @@ def _keep_ts_overloads_beside_a_body(symbols: list[Symbol], node_types: list[str
     That is an ambient declaration (``declare function``, a ``.d.ts``), not an
     overload, and it never was a symbol.
     """
-    bodied = {s.id for s, t in zip(symbols, node_types, strict=True) if t not in _TS_OVERLOAD_SIGNATURES}
+    bodied = {
+        s.id for s, t in zip(symbols, node_types, strict=True) if t not in _TS_OVERLOAD_SIGNATURES
+    }
     return [
         s
         for s, t in zip(symbols, node_types, strict=True)
@@ -87,7 +91,6 @@ def _is_declaration(
     if export_type is not None:
         return export_type.is_forward_declaration
     return _is_bodiless_cpp_type(language, node_type, def_node)
-
 
 
 _FSHARP_BINDING_NODE_TYPES = ("function_declaration_left", "value_declaration_left")
@@ -277,6 +280,18 @@ def _is_split_annotation_chain(node: Node | None) -> bool:
     return False
 
 
+def _restore_kotlin_annotations(
+    symbols: list[Symbol],
+    recovered: dict[int, tuple[int, str]],
+) -> None:
+    """Restore annotation lines and decorator text on recovered Kotlin symbols."""
+    for symbol in symbols:
+        entry = recovered.get(symbol.start_line)
+        if entry is not None and symbol.parent_name is None:
+            symbol.start_line, text = entry
+            symbol.decorators = [text, *symbol.decorators]
+
+
 def _declared_modifiers(def_node: Node, node_types: frozenset[str], src: str) -> tuple[str, ...]:
     """Lowercased keyword modifiers written in *def_node*'s modifier children.
 
@@ -368,6 +383,10 @@ def _refine_visibility(
     # interface or annotation body, which the modifier-text fn cannot see.
     if language == "java":
         return refine_java_visibility(def_node), False
+    # Apex: the keyword is read from the AST, where annotation text cannot
+    # pass for one, and an interface member is public.
+    if language == "apex":
+        return refine_apex_visibility(def_node), False
     # TS/JS: a top-level declaration is only public when exported —
     # inline, via ``export { x }`` lists, or ``export default x``.
     if language in _TS_JS_LANGUAGES:
@@ -381,6 +400,10 @@ def _refine_visibility(
     # trait's modifier is the only place their visibility is stated.
     if language == "rust":
         return refine_rust_visibility(def_node, visibility, src), False
+    # Ruby: ``private`` / ``protected`` are calls in the class body, so the
+    # def's own text says nothing; what precedes and follows it does.
+    if language == "ruby":
+        return refine_ruby_visibility(def_node, visibility, src), False
     return visibility, False
 
 

@@ -904,8 +904,31 @@ async def test_get_health_dimension_filter_leaves_kpis_and_ranking_alone(setup_m
     filtered = await get_health(
         include=["biomarkers", "maintainability"], only=["kpis", "worst_files"]
     )
-    assert filtered["kpis"]["performance_findings"] == full["kpis"]["performance_findings"]
+    assert filtered["kpis"]["performance_causes"] == full["kpis"]["performance_causes"]
     assert filtered["worst_files"] == full["worst_files"]
+
+
+@pytest.mark.asyncio
+async def test_get_health_kpis_print_the_one_performance_headline(setup_mcp, health_data):
+    """The kpis carry the core headline every surface prints, never a raw finding count."""
+    from sqlalchemy import select
+
+    from repowise.core.persistence.crud import performance_headline
+    from repowise.core.persistence.models import Repository
+    from repowise.server.mcp_server import _session_factory, get_health
+
+    result = await get_health(only=["kpis"])
+    kpis = result["kpis"]
+    assert "performance_findings" not in kpis
+    async with _session_factory() as session:
+        repo = (await session.execute(select(Repository))).scalars().first()
+        causes = await performance_headline(session, repo.id, covered_nloc=1)
+    assert set(kpis["performance_causes"]) == {"now", "production", "all", "per_10k_loc"}
+    assert (
+        kpis["performance_causes"]["now"],
+        kpis["performance_causes"]["production"],
+        kpis["performance_causes"]["all"],
+    ) == (causes.now, causes.production, causes.all)
 
 
 @pytest.fixture
@@ -1883,6 +1906,37 @@ async def test_unknown_only_keys_are_rejected_with_a_hint(setup_mcp, health_data
     result = await get_health(only=["performance"])
     assert result["unknown_only_keys"] == ["performance"]
     assert "performance_opportunities" in result["unknown_only_keys_hint"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_only_key_names_the_include_it_needs(setup_mcp, health_data):
+    from repowise.server.mcp_server import get_health
+
+    result = await get_health(only=["performance_opportunities", "refactoring", "trnd"])
+    hint = result["unknown_only_keys_hint"]
+    assert hint.startswith(
+        'only=["performance_opportunities"] needs include=["performance"]. '
+        'only=["refactoring"] needs include=["refactoring"]. '
+    )
+    assert "trnd" not in hint
+
+
+def test_unknown_only_hint_skips_an_include_already_passed():
+    from repowise.server.mcp_server.tool_health.projection import (
+        _UNKNOWN_ONLY_HINT,
+        _unknown_only_hint,
+    )
+    from repowise.server.mcp_server.tool_health.request import HealthRequest
+
+    req = HealthRequest(
+        targets=None, include=["performance"], only=["performance_opportunities"], repo=None,
+        limit=None, cursor=0, refactoring_view="diversified", refactoring_type=None,
+        refactoring_confidence=None, refactoring_effort=None, refactoring_scope=None,
+        performance_view=None, performance_context=None, performance_boundary=None,
+        performance_confidence=None, performance_actionability=None, performance_sort=None,
+        scope="all", counts="everything",
+    )
+    assert _unknown_only_hint(req, ["performance_opportunities"]) == _UNKNOWN_ONLY_HINT
 
 
 @pytest.mark.asyncio
@@ -2868,8 +2922,8 @@ async def test_overview_states_both_counts_and_withholds_the_band(setup_mcp, hea
     repo = SimpleNamespace(id=health_data)
     full = await _build_code_health(session, repo)
     assert full["band"] is not None
-    assert "unanalysed_file_count" not in full
-    assert "analysed_share" not in full
+    assert full["code_files"] == 2
+    assert "files_scored" not in full
 
     for i in range(3):
         session.add(
@@ -2884,7 +2938,130 @@ async def test_overview_states_both_counts_and_withholds_the_band(setup_mcp, hea
     await session.flush()
 
     partial = await _build_code_health(session, repo)
-    assert partial["file_count"] == 2
-    assert partial["unanalysed_file_count"] == 3
-    assert partial["analysed_share"] == 0.4
+    assert partial["code_files"] == 5
+    assert partial["files_scored"] == 2
     assert partial["band"] is None
+
+
+@pytest.mark.asyncio
+async def test_what_if_names_the_points_a_fix_recovers(setup_mcp, session, populated_db):
+    """Per finding, per file and per headline, with the ceiling history leaves."""
+    from repowise.core.persistence.crud import save_health_findings, save_health_metrics
+    from repowise.server.mcp_server import get_health
+
+    await save_health_metrics(
+        session,
+        populated_db,
+        [
+            {
+                "file_path": "src/auth/service.py",
+                "score": 4.5,
+                "nloc": 200,
+                "is_test": False,
+                "structure_deduction": 3.0,
+                "history_deduction": 2.5,
+            },
+            {"file_path": "src/db/models.py", "score": 9.0, "nloc": 50, "is_test": False},
+            # Off the worst-files list, but inside the headline average.
+            {"file_path": "tests/test_auth.py", "score": 9.0, "nloc": 250, "is_test": True},
+        ],
+    )
+    finding = {
+        "file_path": "src/auth/service.py",
+        "severity": "high",
+        "line_start": 10,
+        "line_end": 80,
+        "details": {},
+        "reason": "r",
+    }
+    await save_health_findings(
+        session,
+        populated_db,
+        [
+            {**finding, "biomarker_type": "complex_method", "function_name": "a", "health_impact": 2.0},
+            {**finding, "biomarker_type": "nested_complexity", "function_name": "b", "health_impact": 1.0},
+        ],
+    )
+    await session.commit()
+
+    plain = await get_health()
+    assert "what_if" not in plain
+    assert plain["kpis"]["file_count"] == 3
+    block = (await get_health(include=["what_if"], only=["what_if"]))["what_if"]
+    row = block["files"][0]
+    assert row["file_path"] == "src/auth/service.py"
+    assert row["is_hotspot"] is True
+    # With no structure left, history may deduct at most 1.0: a 9.0 ceiling.
+    assert row["ceiling"] == 9.0
+    assert "target_out_of_reach" not in row
+    top = block["top_fixes"][0]
+    assert (top["biomarker_type"], top["points"]) == ("complex_method", 2.0)
+    # 2.0 structure points also lower history's cap from 2.5 to 2.0: 4.5 -> 7.0,
+    # on 200 of the headline's 500 nloc; the only hotspot carries all of it.
+    assert top["gain"] == {"file": 2.5, "average": 1.0, "hotspot": 2.5}
+    assert row["fix_all_structure"]["file"] == 4.5
+
+
+def test_kpis_name_production_code_beside_the_all_files_average() -> None:
+    """``production_average`` rides beside ``average_health`` while tests are in
+    it, and is left out once the reading holds no tests."""
+    from repowise.core.persistence.models import HealthFileMetric
+    from repowise.server.mcp_server.tool_health.summary import _compute_kpis
+
+    def row(path: str, score: float, *, test: bool) -> HealthFileMetric:
+        return HealthFileMetric(file_path=path, score=score, nloc=100, is_test=test)
+
+    prod, test = row("src/a.py", 6.0, test=False), row("tests/test_a.py", 10.0, test=True)
+    mixed = _compute_kpis([prod, test], deductions={})
+    assert (mixed["average_health"], mixed["production_average"]) == (8.0, 6.0)
+    assert "production_average" not in _compute_kpis([prod], deductions={})
+
+
+def test_kpis_scope_a_score_most_code_files_did_not_feed() -> None:
+    from repowise.core.persistence.models import HealthFileMetric
+    from repowise.server.mcp_server.tool_health.summary import _compute_kpis
+
+    rows = [HealthFileMetric(file_path=f"s{i}.sh", score=10.0, nloc=10) for i in range(9)]
+    minority = _compute_kpis(rows, unanalysed=106, deductions={})
+    assert minority["average_health_scope"] == "across 9 of 115 code files"
+    assert minority["band"] is None
+    assert "average_health_scope" not in _compute_kpis(rows, unanalysed=1, deductions={})
+
+
+@pytest.mark.asyncio
+async def test_workspace_rows_count_the_files_the_overview_counts(setup_mcp, health_data, session):
+    """repo="all" and the single-repo overview state one file count."""
+    from types import SimpleNamespace
+
+    from repowise.server.mcp_server.tool_overview.health import _build_code_health
+    from repowise.server.mcp_server.tool_overview.workspace import _code_files
+
+    overview = await _build_code_health(session, SimpleNamespace(id=health_data))
+    assert await _code_files(session, health_data) == overview["code_files"]
+
+
+@pytest.mark.asyncio
+async def test_meta_names_the_analyzer_the_stored_scores_came_from(
+    setup_mcp, session, health_data
+):
+    """Both modes report the newest snapshot's stamp, and omit it when none recorded it."""
+    from repowise.core.persistence.crud import save_health_snapshot
+    from repowise.server.mcp_server import get_health
+
+    assert "analyzer_version" not in (await get_health(only=["kpis"]))["_meta"]["health_analysis"]
+    await save_health_snapshot(
+        session,
+        health_data,
+        hotspot_health=5.0,
+        average_health=6.0,
+        worst_performer_path=None,
+        worst_performer_score=None,
+    )
+    await session.flush()
+
+    from repowise.core.analysis.health import HEALTH_ANALYZER_VERSION
+
+    scoped = await get_health(targets=["src/auth/service.py"], only=["metrics"])
+    dashboard = await get_health(only=["kpis"])
+    for result in (scoped, dashboard):
+        assert result["_meta"]["health_analysis"]["analyzer_version"] == HEALTH_ANALYZER_VERSION

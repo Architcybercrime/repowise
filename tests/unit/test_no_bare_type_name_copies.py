@@ -120,6 +120,10 @@ _KNOWN: dict[str, int] = {
     _PREFIX + "framework_edges/rust.py": 1,
     _PREFIX + "framework_edges/go.py": 1,
     _PREFIX + "framework_edges/flask.py": 1,
+    # Takes the head of an `import a.b` path (twice: the module's bound names and
+    # a test body rebinding a parameter): the name the import binds, a module
+    # name, not a type.
+    _PREFIX + "framework_edges/pytest_edges.py": 2,
     # Takes the qualifier HEAD of `OrderHandlers.GetOrder` to reach the
     # declaring type. It does want a type, but the shared helper returns the
     # trailing segment, which is the member — the opposite end, the same reason
@@ -132,7 +136,6 @@ _KNOWN: dict[str, int] = {
     _PREFIX + "framework_edges/micronaut.py": 2,
     _PREFIX + "framework_edges/spring.py": 4,
     _PREFIX + "parser_helpers.py": 1,
-    _PREFIX + "languages/go_interface_satisfaction.py": 1,
 }
 
 # Builtin-type lists are language identity data and belong on the spec beside

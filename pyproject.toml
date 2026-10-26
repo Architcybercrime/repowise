@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "repowise"
-version = "0.57.0"
+version = "0.59.0"
 description = "The codebase intelligence layer for your AI coding agent — dependency graph, git history, dead code, decisions, and code health, exposed over MCP"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -87,7 +87,7 @@ dependencies = [
     # Retry logic
     "tenacity>=9,<10",
     # Git operations
-    "gitpython>=3.1,<4",
+    "gitpython>=3.2.1,<4",
     # YAML parsing
     "pyyaml>=6.0,<7",
     # Vector search (LanceDB — pure Python wheel)
@@ -99,7 +99,7 @@ dependencies = [
     # Server
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.32,<1",
-    "mcp>=1.0,<2",
+    "mcp>=1.30.0,<2",
     "apscheduler>=3.10,<4",
     "cryptography>=50.0.0,<51",
     # LLM providers (bundled — no extras needed)

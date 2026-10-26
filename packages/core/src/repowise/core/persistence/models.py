@@ -149,8 +149,12 @@ class Repository(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now_utc
     )
+    # When the index last synced to the checkout, read through
+    # ``crud.index_synced_at``. No ``onupdate``: only the sync stampers move it,
+    # so a settings edit or a command that merely opens the row cannot make a
+    # days-old index read as fresh.
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now_utc, onupdate=_now_utc
+        DateTime(timezone=True), nullable=False, default=_now_utc
     )
 
 
@@ -257,7 +261,10 @@ class PageVersion(Base):
     __tablename__ = "wiki_page_versions"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_uuid)
-    page_id: Mapped[str] = mapped_column(Text, ForeignKey("wiki_pages.id"), nullable=False)
+    # Indexed so deleting a page does not scan every version for the FK check.
+    page_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("wiki_pages.id"), nullable=False, index=True
+    )
     repository_id: Mapped[str] = mapped_column(String(32), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     page_type: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -949,6 +956,11 @@ class GitCommitHealthDelta(Base):
     introduced_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     worsened_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     resolved_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Findings that dropped a metric, and findings carried to another file with their code.
+    improved_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    moved_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     files_analyzed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     files_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     findings_stored: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -1005,6 +1017,9 @@ class GitCommitHealthFinding(Base):
     attribution_basis: Mapped[str] = mapped_column(String(24), nullable=False, default="unknown")
     health_impact: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Set when the finding's code moved here from another file in this commit.
+    moved_from_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    moved_from_symbol: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now_utc
@@ -1207,7 +1222,7 @@ class DecisionRecord(Base):
     # Provenance
     source: Mapped[str] = mapped_column(
         String(32), nullable=False, default=DEFAULT_DECISION_SOURCE
-    )  # git_archaeology | inline_marker | adr | pr | comment | session | cli
+    )  # git_archaeology | inline_marker | adr | pr | comment | session | agent | cli
     evidence_file: Mapped[str | None] = mapped_column(Text, nullable=True)
     evidence_line: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The verbatim span this record's identity is keyed on, written once
@@ -1457,6 +1472,7 @@ class DecisionAcceptance(Base):
     #: actions land in the same transaction, and the tie decides who governs.
     seq: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     #: accepted | reaffirmed | superseded | dismissed | returned_to_review | merged
+    #: | deprecated
     action: Mapped[str] = mapped_column(String(24), nullable=False, default="accepted")
     currency: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     #: The rationale, or the explicit reason a constraint has none.
@@ -1526,6 +1542,12 @@ class DecisionCandidateMeta(Base):
     #: Set when review folded this candidate into another record.
     merged_into: Mapped[str | None] = mapped_column(String(32), nullable=True)
     dismissed_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    #: Who set ``dismissed_reason`` (a dismissal or a split request), signed
+    #: like an acceptance row. Here, not in the acceptance log, because a row
+    #: there would make the candidate a decision. Null predates the columns.
+    dismissed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dismissed_by_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    dismissed_session: Mapped[str | None] = mapped_column(String(64), nullable=True)
     first_seen: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now_utc
     )
@@ -2506,6 +2528,9 @@ class HealthSnapshot(Base):
     maintainability_average: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Stored documentation drift findings at this instant. NULL before recorded.
     doc_drift_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ``HEALTH_ANALYZER_VERSION`` of the writer, so a trend can tell a scoring
+    # change from a code change. NULL on snapshots taken before it was recorded.
+    analyzer_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SnapshotRun(Base):

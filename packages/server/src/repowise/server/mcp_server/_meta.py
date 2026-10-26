@@ -142,8 +142,9 @@ def _canonical_scope_requested() -> bool:
 def _full_scope_hint() -> str:
     """The call that returns the whole scope, as this server is running.
 
-    In workspace mode ``get_overview()`` returns the repo listing and carries
-    no scope at all, so a digest pointing there would send an agent somewhere
+    The overview carries the whole scope only when asked for it. In workspace
+    mode ``get_overview(repo="all")`` returns the repo listing and carries no
+    scope at all, so a digest pointing there would send an agent somewhere
     the rest of the answer is not. The argument is named rather than filled in
     because the alias belongs to the caller's own request, not to the
     repository row this envelope was built from.
@@ -151,8 +152,8 @@ def _full_scope_hint() -> str:
     from repowise.server.mcp_server import _state
 
     if getattr(_state, "_registry", None) is not None:
-        return "get_overview(repo=...)"
-    return "get_overview()"
+        return 'get_overview(repo=..., include=["scope"])'
+    return 'get_overview(include=["scope"])'
 
 
 def index_scope_for_response(local_path: str | None) -> dict[str, Any] | None:
@@ -504,11 +505,13 @@ def freshness_from_repo(
         return {}
     out: dict[str, Any] = {"contract_version": MCP_CONTRACT_VERSION} if full_meta() else {}
 
-    updated_at = getattr(repository, "updated_at", None)
+    # Deferred: this module's top-level imports stay free of the ORM.
+    from repowise.core.persistence.crud import index_synced_at
+
+    synced_at = index_synced_at(repository)
     age_days: int | None = None
-    if isinstance(updated_at, datetime):
-        ua = updated_at if updated_at.tzinfo else updated_at.replace(tzinfo=UTC)
-        age_days = max(0, (datetime.now(UTC) - ua).days)
+    if synced_at is not None:
+        age_days = max(0, (datetime.now(UTC) - synced_at).days)
         out["index_age_days"] = age_days
 
     # ``root``: the served checkout (see served_root), resolved here when omitted.
@@ -853,8 +856,8 @@ def keyless_note_meta() -> dict[str, Any]:
     _state._keyless_note_announced = True
     return {
         "keyless_note": (
-            "repowise generate writes synthesized answers with a model "
-            "(needs a key, or --provider ollama for a local model)"
+            "no model is configured, so answers are not synthesized; set a provider "
+            "key (or a provider in .repowise/config.yaml) and restart the MCP server"
         )
     }
 
