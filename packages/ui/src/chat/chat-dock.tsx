@@ -45,6 +45,17 @@ interface PersistedDockState {
 
 const DEFAULT_STATE: PersistedDockState = { mode: "minimized", draft: "" };
 
+/** The minimized dock's default gap above the viewport bottom (`collisionInset`). */
+const DEFAULT_COLLISION_INSET = "1rem";
+
+/**
+ * How far the minimized dock reaches up from the viewport bottom at its
+ * default offset: `DEFAULT_COLLISION_INSET` plus the pill's `min-h-11`. A host
+ * panel anchored bottom-right stops above this rather than run under the pill.
+ * Keep it in step with both if either changes.
+ */
+export const CHAT_DOCK_PILL_REACH = "3.75rem";
+
 function readDockState(storageKey: string): PersistedDockState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
@@ -221,7 +232,7 @@ export function ChatDock({
   onOpenFullChat,
   owlDarkSrc = "/repowise-logo.png",
   owlLightSrc = "/repowise-logo-light.png",
-  collisionInset = "1rem",
+  collisionInset = DEFAULT_COLLISION_INSET,
   onArtifactPin,
   onOpenArtifactSource,
   artifactOverrides,
