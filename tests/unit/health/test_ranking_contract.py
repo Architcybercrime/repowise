@@ -183,6 +183,21 @@ def test_worst_in_scope_skips_files_fix_first_leaves_out() -> None:
     assert worst_in_scope(rows[:2], {}) == (None, None)
 
 
+def test_production_average_covers_the_files_worst_performer_is_picked_from() -> None:
+    """Tooling, vendored, generated and test files stay in ``average_health``
+    and out of ``production_average``."""
+    rows = [
+        {**_dict("scripts/migrate.py", 10.0), "code_origin": "tooling"},
+        {**_dict("third_party/lib.js", 10.0), "code_origin": "vendored"},
+        {**_dict("src/gen/schema_pb2.py", 10.0), "code_origin": "generated"},
+        {**_dict("tests/test_app.py", 10.0), "is_test": True},
+        _dict("src/app.py", 4.0),
+    ]
+    kpis = compute_kpis(rows, set())
+    assert kpis["average_health"] == 8.8
+    assert (kpis["production_average"], kpis["production_file_count"]) == (4.0, 1)
+
+
 def test_the_deduction_map_has_no_default() -> None:
     """Omitting it would silently tie the whole floor band on path."""
     with pytest.raises(TypeError):

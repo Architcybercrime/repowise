@@ -3017,6 +3017,31 @@ def test_kpis_name_production_code_beside_the_all_files_average() -> None:
     assert "production_average" not in _compute_kpis([prod], deductions={})
 
 
+def test_production_average_agrees_on_every_surface() -> None:
+    """Tooling, vendored and generated files stay out of ``production_average``
+    on get_health, get_overview and ``compute_kpis`` alike."""
+    from repowise.core.analysis.health.scoring import compute_kpis
+    from repowise.core.persistence.models import HealthFileMetric
+    from repowise.server.mcp_server.tool_health.summary import _compute_kpis
+    from repowise.server.mcp_server.tool_overview.health import _production_average
+
+    def row(path: str, score: float, origin: str) -> HealthFileMetric:
+        return HealthFileMetric(
+            file_path=path, score=score, nloc=100, is_test=False, code_origin=origin
+        )
+
+    rows = [
+        row("src/a.py", 6.0, "production"),
+        row("scripts/release.py", 10.0, "tooling"),
+        row("vendor/lib.js", 10.0, "vendored"),
+        row("src/gen/api_pb2.py", 10.0, "generated"),
+    ]
+    mcp = _compute_kpis(rows, deductions={})
+    assert (mcp["average_health"], mcp["production_average"]) == (9.0, 6.0)
+    assert compute_kpis(rows, set())["production_average"] == 6.0
+    assert _production_average(rows, len(rows)) == 6.0
+
+
 def test_kpis_scope_a_score_most_code_files_did_not_feed() -> None:
     from repowise.core.persistence.models import HealthFileMetric
     from repowise.server.mcp_server.tool_health.summary import _compute_kpis

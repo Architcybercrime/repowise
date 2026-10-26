@@ -327,6 +327,6 @@ def test_production_average_needs_tests_in_the_reading():
     prod = SimpleNamespace(file_path="a.py", score=6.0, nloc=10, is_test=False)
     test = SimpleNamespace(file_path="t.py", score=10.0, nloc=10, is_test=True)
 
-    assert _production_average([prod, test]) == 6.0
+    assert _production_average([prod, test], 2) == 6.0
     # With no tests it would only repeat the headline.
-    assert _production_average([prod]) is None
+    assert _production_average([prod], 1) is None

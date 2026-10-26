@@ -630,10 +630,11 @@ def _render_headline(kpis: dict[str, Any], code_shape: bool, unanalysed: int) ->
     avg = kpis.get("average_health")
     avg_band = headline_band(avg, share)
     parts = [banded("Code health", avg, avg_band) + (f" {scope}" if scope else "")]
-    # Production code beside the all-files figure, while tests are in it.
+    # Production code beside the all-files figure, while tests, tooling or
+    # other non-shipping code are in it.
     production = kpis.get("production_average")
-    has_tests = (kpis.get("production_file_count") or 0) < (kpis.get("file_count") or 0)
-    if production is not None and has_tests:
+    narrowed = (kpis.get("production_file_count") or 0) < (kpis.get("file_count") or 0)
+    if production is not None and narrowed:
         parts.append(banded("Production code", production, headline_band(production, share)))
     # A repo with no recent churn has no hotspots, so no hotspot figure.
     hotspot = kpis.get("hotspot_health")
