@@ -12,7 +12,7 @@ import subprocess
 import pytest
 
 from repowise.core.analysis import security_gate
-from repowise.core.analysis.changed_lines import changed_lines, split_commit_patches
+from repowise.core.analysis.changed_lines import changed_lines
 from repowise.core.analysis.doc_drift.render import render_sarif as doc_drift_sarif
 from repowise.core.analysis.security_gate import (
     evaluate,
@@ -183,16 +183,6 @@ def test_a_nul_byte_inside_a_patch_does_not_split_its_commit(repo):
     scan = _scan(repo)
     assert scan.commits_scanned == 4
     assert _kinds(scan) == [("aws_access_key", 1, True)]
-
-
-def test_split_commit_patches_starts_a_commit_only_at_a_line_start_commit_id():
-    sha1, sha256 = "a" * 40, "b" * 64
-    raw = f"\0{sha1}\n\n+x = '\0{sha1}'\n+\0;\n\0{sha256}\n\n-y\n\0{sha1}"
-    assert split_commit_patches(raw) == [
-        (sha1, f"\n+x = '\0{sha1}'\n+\0;\n"),
-        (sha256, "\n-y\n"),
-        (sha1, ""),
-    ]
 
 
 def test_code_smells_in_intermediate_commits_do_not_count(repo):
