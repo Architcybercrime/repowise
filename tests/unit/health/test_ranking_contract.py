@@ -196,6 +196,11 @@ def test_production_average_covers_the_files_worst_performer_is_picked_from() ->
     kpis = compute_kpis(rows, set())
     assert kpis["average_health"] == 8.8
     assert (kpis["production_average"], kpis["production_file_count"]) == (4.0, 1)
+    no_production = compute_kpis(rows[:4], set())
+    assert (no_production["production_average"], no_production["production_file_count"]) == (
+        None,
+        0,
+    )
 
 
 def test_the_deduction_map_has_no_default() -> None:
