@@ -74,6 +74,11 @@ _ELSE_TOKEN_KINDS = frozenset({"else", "kElse"})
 # cond`` / ``x += 1 until done`` / ``x rescue nil``) are too. Treating them as
 # flat keeps ``max_nesting`` / ``cognitive`` honest — they were only added to
 # ``branch_kinds`` / ``loop_kinds`` / ``catch_kinds`` for the CCN count.
+# C / C++ conditional-compilation blocks. Their arms (``#if`` / ``#elif`` /
+# ``#else``) are alternative builds of the same code, not code that all runs, so
+# the walker keeps only the largest arm's CCN and cognitive complexity.
+_PREPROC_CONDITIONAL_KINDS = frozenset({"preproc_if", "preproc_ifdef"})
+
 _FLAT_BRANCH_KINDS = frozenset(
     {
         "if_clause",
@@ -517,8 +522,40 @@ def _walk_function_body(
             and node.type not in lmap.lambda_kinds
             and node.type not in _MARKUP_VALUE_KINDS
         )
+        if node_type in _PREPROC_CONDITIONAL_KINDS and (
+            node.child_by_field_name("alternative") is not None
+        ):
+            _recurse_preproc_arms(node, new_depth, child_markup, scope)
+            return
         for child in node.children:
             _recurse(child, new_depth, child_markup, scope)
+
+    def _recurse_preproc_arms(node: Node, depth: int, in_markup: bool, scope: int) -> None:
+        """Walk a ``#if`` / ``#elif`` / ``#else`` chain, keeping the largest arm.
+
+        Each arm starts from the same CCN and cognitive baseline; afterwards the
+        arm with the highest (ccn, cognitive) delta is the one that stays added.
+        An ``#elif`` chain and nested blocks fall out of the same rule, because
+        nested blocks reach this function again through ``_recurse``. Nesting
+        depth, conditions and the side channels still see every arm: those lines
+        exist in the source, and a flagged condition in any arm is worth showing.
+        """
+        nonlocal ccn, cognitive
+        base_ccn, base_cognitive = ccn, cognitive
+        best_ccn, best_cognitive = 0, 0
+        arm: Node | None = node
+        while arm is not None:
+            alternative = arm.child_by_field_name("alternative")
+            ccn, cognitive = base_ccn, base_cognitive
+            for child in arm.children:
+                if alternative is not None and child.id == alternative.id:
+                    continue
+                _recurse(child, depth, in_markup, scope)
+            best_ccn, best_cognitive = max(
+                (best_ccn, best_cognitive), (ccn - base_ccn, cognitive - base_cognitive)
+            )
+            arm = alternative
+        ccn, cognitive = base_ccn + best_ccn, base_cognitive + best_cognitive
 
     root_scope = 0
     if (
