@@ -248,6 +248,8 @@ class BasePerfDialect:
             if stmt.type in self.scope_kinds:  # a lambda body runs elsewhere
                 return False
             stmt = stmt.parent
+            if stmt.type in loop_kinds:  # an inner loop repeats it
+                return False
         if stmt.parent is None or stmt.type == "switch_label":
             return False
         # A ``case`` label is tested on every dispatch, not run once.

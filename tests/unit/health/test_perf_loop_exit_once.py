@@ -113,6 +113,21 @@ def test_conditional_exit_still_fires(case):
             "import requests\ndef f(xs, ys):\n    for x in xs:\n        for y in ys:\n"
             "            requests.get(y)\n            break\n",
         ),
+        # An exit after an inner loop does not stop that loop repeating its body or condition.
+        (
+            "python",
+            "import requests\ndef f(xs, ys):\n    for x in xs:\n        for y in ys:\n"
+            "            requests.get(y)\n        return\n",
+        ),
+        (
+            "python",
+            "import requests\ndef f(xs):\n    for x in xs:\n        while requests.get(x):\n"
+            "            pass\n        return\n",
+        ),
+        (
+            "typescript",
+            "async function f(xs, ys) { for (const x of xs) { for (const y of ys) await fetch(y); return; } }",
+        ),
         # A ``return`` inside a closure run in place ends the closure, not the loop.
         (
             "typescript",
