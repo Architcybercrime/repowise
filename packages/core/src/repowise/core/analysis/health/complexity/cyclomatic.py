@@ -450,7 +450,6 @@ def _walk_function_body(
             or node.type in lmap.loop_kinds
             or node.type in lmap.case_kinds
             or node.type in lmap.catch_kinds
-            or node.id in bare_handler_ids
         ):
             ccn_increment = 1
             # An ``else if`` / ``elif`` chain arm, a ternary chain arm or
@@ -464,27 +463,12 @@ def _walk_function_body(
                 or _is_flat_ternary(node, lmap, in_markup)
             ):
                 nesting_increment = 1
-            # Side-channel: count compound boolean ops in this
-            # construct's condition. Does not affect ccn/cognitive
-            # (boolean operators are still tallied independently by
-            # the regular recursion below).
-            op_count = 0
-            op_kinds: set[str] = set()
-            negated = False
-            for sub in _condition_subtrees(node):
-                sub_count, sub_kinds, sub_negated = _count_boolean_ops_in_condition(sub, lmap)
-                op_count += sub_count
-                op_kinds |= sub_kinds
-                negated = negated or sub_negated
-            if op_count > 0:
-                conditions.append(
-                    ConditionComplexity(
-                        line=node.start_point[0] + 1,
-                        operator_count=op_count,
-                        enclosing_construct=_enclosing_construct(node, lmap),
-                        flat_chain=len(op_kinds) == 1 and not negated,
-                    )
-                )
+            # Side-channel: does not affect ccn/cognitive (boolean operators
+            # are still tallied independently by the regular recursion below).
+            conditions.extend(_compound_condition(node, lmap))
+        elif node.id in bare_handler_ids:
+            # A bare ``on T { }`` handler branches and nests like a catch clause.
+            ccn_increment = nesting_increment = 1
         elif node.is_named and node.type in lmap.try_kinds:
             # TRY neither branches nor nests: each catch opens the level for
             # its own body, and the guarded and finally bodies stay at the
@@ -552,6 +536,28 @@ def _walk_function_body(
         block = _widened_block(deepest_node[0], body_node, lmap)
         deepest[:] = [block.start_point[0] + 1, block.end_point[0] + 1]
     return ccn, max_nesting, cognitive, bumps, conditions
+
+
+def _compound_condition(node: Node, lmap: LanguageNodeMap) -> list[ConditionComplexity]:
+    """The compound boolean ops in *node*'s condition, as one record or none."""
+    op_count = 0
+    op_kinds: set[str] = set()
+    negated = False
+    for sub in _condition_subtrees(node):
+        sub_count, sub_kinds, sub_negated = _count_boolean_ops_in_condition(sub, lmap)
+        op_count += sub_count
+        op_kinds |= sub_kinds
+        negated = negated or sub_negated
+    if op_count == 0:
+        return []
+    return [
+        ConditionComplexity(
+            line=node.start_point[0] + 1,
+            operator_count=op_count,
+            enclosing_construct=_enclosing_construct(node, lmap),
+            flat_chain=len(op_kinds) == 1 and not negated,
+        )
+    ]
 
 
 def _bare_on_handlers(try_node: Node) -> list[int]:
