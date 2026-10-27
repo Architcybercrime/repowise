@@ -107,6 +107,12 @@ def test_conditional_exit_still_fires(case):
             "typescript",
             "async function f(xs) { for (const x of xs) { switch (x) { case await fetch(x): return; } } }",
         ),
+        # A ``break`` in an inner loop leaves only the inner loop.
+        (
+            "python",
+            "import requests\ndef f(xs, ys):\n    for x in xs:\n        for y in ys:\n"
+            "            requests.get(y)\n            break\n",
+        ),
         # A ``return`` inside a closure run in place ends the closure, not the loop.
         (
             "typescript",
@@ -118,3 +124,12 @@ def test_conditional_exit_still_fires(case):
 def test_exit_that_does_not_end_the_loop_keeps_the_finding(lang, src):
     kinds = _kinds(lang, src)
     assert kinds & {"io_in_loop", "regex_compile_in_loop"}
+
+
+def test_return_inside_try_still_ends_the_loop():
+    """No handler catches a ``return``, so a ``try`` around it keeps the gate."""
+    src = (
+        "import requests\ndef f(xs):\n    for x in xs:\n        try:\n"
+        "            requests.get(x)\n            return\n        except ValueError:\n            pass\n"
+    )
+    assert "io_in_loop" not in _kinds("python", src)
