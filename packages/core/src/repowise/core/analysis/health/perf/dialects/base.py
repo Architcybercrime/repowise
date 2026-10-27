@@ -258,6 +258,19 @@ class BasePerfDialect:
         of a ``switch``). Ceiling: a labeled ``break`` never counts."""
         if stmt.type not in self.exit_kinds or stmt.type == "continue_statement":
             return False
+        loops, in_try, breaks_loop = self._exit_context(stmt, loop_kinds)
+        if not loops:
+            return False
+        if stmt.type == "return_statement":
+            return True
+        if stmt.type == "break_statement":
+            return loops == 1 and breaks_loop and not stmt.named_child_count
+        return not in_try
+
+    def _exit_context(self, stmt: Node, loop_kinds: frozenset[str]) -> tuple[int, bool, bool]:
+        """``(loops, in_try, breaks_loop)`` up to *stmt*'s scope: the loops around
+        it, whether a ``try`` is among its ancestors, and whether the innermost
+        statement a ``break`` leaves is a loop (not a ``switch``)."""
         loops, in_try, breakable = 0, False, None
         cur = stmt.parent
         while cur is not None and cur.type not in self.scope_kinds:
@@ -267,15 +280,7 @@ class BasePerfDialect:
             # Every grammar the gate serves spells its try ``try_*``.
             in_try = in_try or cur.type.startswith("try")
             cur = cur.parent
-        if not loops:
-            return False
-        if stmt.type == "return_statement":
-            return True
-        if stmt.type == "break_statement":
-            return (
-                loops == 1 and breakable.type in loop_kinds and not stmt.named_child_count
-            )
-        return not in_try
+        return loops, in_try, breakable is not None and breakable.type in loop_kinds
 
     def defers_body(self, fn: Node) -> bool:
         """*fn*'s body runs when its result is iterated, not when it is called

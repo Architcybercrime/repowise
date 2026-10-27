@@ -1036,23 +1036,28 @@ class _PerfWalk:
     def _on_helper_call(self, call: _Call, cur: _Frame, nxt: _Frame) -> None:
         """A non-sink call: a loop marker, or a reachability entry in a loop or under a lock."""
         if cur.loop_depth >= 1:
-            marker = self._loop_call_marker(call, nxt)
-            if marker is not None:
-                if not self._runs_once(call.node):
-                    self.hits.append(
-                        PerfHit(
-                            marker, call.line, nxt.func, "", func_start=nxt.start,
-                            loop=self.loop_facts(call.node, sink=False),
-                            # ``arr.includes(x)``: the list is the receiver.
-                            subject=call.root_name if marker == _MEMBERSHIP else "",
-                        )
-                    )
-            elif self._is_loop_target(call):
-                self._record_loop_call(call, cur, nxt)
+            self._on_loop_helper_call(call, cur, nxt)
         if self.do_lock_io and cur.lock_depth >= 1 and call.method:
             lock_targets = self._acc(nxt.start, nxt.func)[1]
             if call.method not in lock_targets:
                 lock_targets[call.method] = call.line
+
+    def _on_loop_helper_call(self, call: _Call, cur: _Frame, nxt: _Frame) -> None:
+        marker = self._loop_call_marker(call, nxt)
+        if marker is None:
+            if self._is_loop_target(call):
+                self._record_loop_call(call, cur, nxt)
+            return
+        if self._runs_once(call.node):
+            return
+        self.hits.append(
+            PerfHit(
+                marker, call.line, nxt.func, "", func_start=nxt.start,
+                loop=self.loop_facts(call.node, sink=False),
+                # ``arr.includes(x)``: the list is the receiver.
+                subject=call.root_name if marker == _MEMBERSHIP else "",
+            )
+        )
 
     def _loop_call_marker(self, call: _Call, nxt: _Frame) -> str | None:
         if not self.do_loop_call_marker:
