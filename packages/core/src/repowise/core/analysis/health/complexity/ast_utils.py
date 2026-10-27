@@ -310,6 +310,9 @@ def _dart_signature_name(sig: Node) -> str:
         symbol = "".join(
             _node_text(c) for c in sig.children[start:] if c.type != "formal_parameter_list"
         )
+        params = next((c for c in sig.children if c.type == "formal_parameter_list"), None)
+        if symbol == "-" and params is not None and params.named_child_count == 0:
+            symbol = "unary-"  # Dart's own name, apart from binary ``-``
         return f"operator {symbol}"
     return _find_name(sig)
 

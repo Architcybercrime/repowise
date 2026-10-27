@@ -806,6 +806,8 @@ class A {
   int f() => 1;
   bool operator ==(Object o) => true;
   int operator [](int i) => i;
+  A operator -() => this;
+  A operator -(A o) => this;
 }
 """
 
@@ -815,7 +817,10 @@ def test_dart_members_get_distinct_names():
     results = walk_file_complexity("a.dart", "dart", _DART_MEMBERS.encode())
     names = sorted(r.name for r in results)
     assert names == sorted(
-        ["A", "A.named", "A.make", "get x", "set x", "f", "operator ==", "operator []"]
+        [
+            "A", "A.named", "A.make", "get x", "set x", "f",
+            "operator ==", "operator []", "operator unary-", "operator -",
+        ]
     )
 
 
