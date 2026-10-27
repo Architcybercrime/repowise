@@ -852,6 +852,8 @@ _DART = LanguageNodeMap(
     # and parameter count come from the preceding signature sibling (see the
     # ``function_body`` handling in ``ast_utils`` / ``perf_walk``).
     function_kinds=frozenset({"function_body"}),
+    # Matched on the signature sibling, not the body (``signature.is_constructor``).
+    ctor_kinds=frozenset({"constructor_signature", "factory_constructor_signature"}),
     lambda_kinds=frozenset({"function_expression"}),
     # ``if_element`` is the collection-literal ``if`` (``[if (x) y]``);
     # ``conditional_expression`` is the ternary.
@@ -859,8 +861,8 @@ _DART = LanguageNodeMap(
     loop_kinds=frozenset({"for_statement", "while_statement", "do_statement", "for_element"}),
     try_kinds=frozenset({"try_statement"}),
     # A bare ``on FormatException {}`` arm without ``catch`` has no
-    # catch_clause node (the block hangs off try_statement directly), so it
-    # is undercounted — the safe direction.
+    # catch_clause node; the CCN walk counts it on its own
+    # (``cyclomatic._bare_on_handlers``).
     catch_kinds=frozenset({"catch_clause"}),
     switch_kinds=frozenset({"switch_statement", "switch_expression"}),
     case_kinds=frozenset(
@@ -1279,8 +1281,7 @@ _PASCAL = LanguageNodeMap(
     # A bound handler (``on E: Exception do``) is an ``exceptionHandler``
     # node; a bare ``except ... end`` with no ``on`` clauses has no such
     # node at all (the statements sit directly under ``except``), so a
-    # parameterless catch-all is undercounted -- the safe direction, same
-    # posture Dart takes for its bare ``on FormatException {}``.
+    # parameterless catch-all is undercounted -- the safe direction.
     catch_kinds=frozenset({"exceptionHandler"}),
     switch_kinds=frozenset({"case"}),
     # The ``else`` branch of a ``case`` has no dedicated node (its

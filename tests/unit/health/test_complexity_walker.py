@@ -795,6 +795,50 @@ def test_dart_assertion_blocks():
     assert few is not None and few.assertion_blocks == []
 
 
+_DART_MEMBERS = """\
+class A {
+  int _x = 0;
+  A() {}
+  A.named(int v) {}
+  factory A.make() { return A(); }
+  int get x => _x;
+  set x(int v) { _x = v; }
+  int f() => 1;
+  bool operator ==(Object o) => true;
+  int operator [](int i) => i;
+}
+"""
+
+
+def test_dart_members_get_distinct_names():
+    _require_language("dart")
+    results = walk_file_complexity("a.dart", "dart", _DART_MEMBERS.encode())
+    names = sorted(r.name for r in results)
+    assert names == sorted(
+        ["A", "A.named", "A.make", "get x", "set x", "f", "operator ==", "operator []"]
+    )
+
+
+def test_dart_named_and_factory_constructors_are_constructors():
+    results = _walk_source(_DART_MEMBERS, "dart", "a.dart")
+    assert all(results[n].is_constructor for n in ("A", "A.named", "A.make"))
+    assert not any(results[n].is_constructor for n in ("get x", "set x", "f"))
+
+
+@pytest.mark.parametrize(
+    "handler", ["on StateError { h(); }", "on StateError catch (e) { h(); }", "catch (e) { h(); }"]
+)
+def test_dart_every_handler_shape_adds_one_ccn(handler: str):
+    source = f"void f() {{\n  try {{ g(); }} {handler}\n}}\n"
+    fn = _walk_source(source, "dart", "f.dart")["f"]
+    assert (fn.ccn, fn.cognitive) == (2, 1)
+
+
+def test_dart_bare_on_handlers_count_each_arm():
+    source = "void f() {\n  try { g(); } on A {} on p.B<int> {} on C catch (e) {} catch (e) {} finally {}\n}\n"
+    assert _walk_source(source, "dart", "f.dart")["f"].ccn == 5
+
+
 def test_scala_nesting_and_ccn():
     results = _walk("scala/nested.scala", "scala")
     deep = _find(results, "deeplyNested")

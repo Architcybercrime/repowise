@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from .ast_utils import _parameter_nodes
+from .ast_utils import _dart_signature_sibling, _parameter_nodes
 
 if TYPE_CHECKING:
     from tree_sitter import Node
@@ -115,6 +115,10 @@ def _enclosing_type_name(fn_node: Node) -> str | None:
 
 def is_constructor(fn_node: Node, name: str, lmap: LanguageNodeMap) -> bool:
     if fn_node.type in lmap.ctor_kinds or name in lmap.ctor_names:
+        return True
+    # Dart: the kind is on the signature beside the body (``A.named`` is one).
+    sig = _dart_signature_sibling(fn_node) if fn_node.type == "function_body" else None
+    if sig is not None and sig.type in lmap.ctor_kinds:
         return True
     parts = name.split("::")
     if len(parts) >= 2 and parts[-1] == parts[-2]:

@@ -400,6 +400,8 @@ def _walk_function_body(
     # Track match_expression nodes identified as "flat" so their arms
     # are not individually counted as branch points.
     flat_match_ids: set[int] = set()
+    # Dart ``on T { }`` handlers with no ``catch``: see ``_bare_on_handlers``.
+    bare_handler_ids: set[int] = set()
     deepest_depth = 0
     deepest_node: list[Node] = []
 
@@ -448,6 +450,7 @@ def _walk_function_body(
             or node.type in lmap.loop_kinds
             or node.type in lmap.case_kinds
             or node.type in lmap.catch_kinds
+            or node.id in bare_handler_ids
         ):
             ccn_increment = 1
             # An ``else if`` / ``elif`` chain arm, a ternary chain arm or
@@ -486,7 +489,7 @@ def _walk_function_body(
             # TRY neither branches nor nests: each catch opens the level for
             # its own body, and the guarded and finally bodies stay at the
             # try's depth (Sonar's cognitive complexity spec).
-            pass
+            bare_handler_ids.update(_bare_on_handlers(node))
         elif node.is_named and node.type in lmap.switch_kinds:
             # Detect flat match: all arms are simple single-expression arms.
             if _is_flat_match(node, lmap):
@@ -549,6 +552,29 @@ def _walk_function_body(
         block = _widened_block(deepest_node[0], body_node, lmap)
         deepest[:] = [block.start_point[0] + 1, block.end_point[0] + 1]
     return ccn, max_nesting, cognitive, bumps, conditions
+
+
+def _bare_on_handlers(try_node: Node) -> list[int]:
+    """Ids of the type node opening each Dart ``on T { }`` handler.
+
+    The grammar gives ``on T catch (e)`` and ``catch (e)`` a ``catch_clause``
+    but leaves a bare ``on T`` as loose tokens beside its block, so the walk
+    counts the type node in its place. Other grammars have no ``on`` token here.
+    """
+    out: list[int] = []
+    arm: Node | None = None
+    after_on = False
+    for child in try_node.children:
+        if child.type == "on":
+            after_on, arm = True, None
+        elif child.type == "catch_clause":
+            after_on, arm = False, None
+        elif after_on and arm is None and child.is_named:
+            arm = child
+        elif child.type == "block" and arm is not None:
+            out.append(arm.id)
+            after_on, arm = False, None
+    return out
 
 
 #: The smallest block named as the place to start flattening a function.
