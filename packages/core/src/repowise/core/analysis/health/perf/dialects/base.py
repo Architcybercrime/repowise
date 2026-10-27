@@ -248,7 +248,12 @@ class BasePerfDialect:
             if stmt.type in self.scope_kinds:  # a lambda body runs elsewhere
                 return False
             stmt = stmt.parent
-        return stmt.parent is not None and self._exit_follows(
+        if stmt.parent is None or stmt.type == "switch_label":
+            return False
+        # A ``case`` label is tested on every dispatch, not run once.
+        if stmt == stmt.parent.child_by_field_name("value"):
+            return False
+        return self._exit_follows(
             stmt, lambda s: self._ends_loop(s, loop_kinds), self._LOOP_BACK
         )
 
@@ -595,10 +600,11 @@ class BasePerfDialect:
     def _exit_follows(
         cls, stmt: Node, is_exit: Callable[[Node], bool], jumps: frozenset[str]
     ) -> bool:
-        """A later statement in *stmt*'s block ends the loop (*is_exit*), and no
-        statement before it holds a jump (*jumps*, e.g. ``continue``) that could
-        loop back first. Then *stmt* runs at most once per loop entry."""
-        between: list[Node] = []
+        """A later statement in *stmt*'s block ends the loop (*is_exit*), and
+        neither *stmt* (``if call(): continue``) nor a statement before the exit
+        holds a jump (*jumps*, e.g. ``continue``) that could loop back first.
+        Then *stmt* runs at most once per loop entry."""
+        between: list[Node] = [stmt]
         nxt = stmt.next_named_sibling
         while nxt is not None and not is_exit(nxt):
             between.append(nxt)

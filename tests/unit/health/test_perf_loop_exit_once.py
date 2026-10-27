@@ -87,6 +87,26 @@ def test_conditional_exit_still_fires(case):
             "import java.util.regex.Pattern;\nclass A { void f(java.util.List<String> xs) {\n"
             '  for (String x : xs) { lbl: { Pattern.compile("a+"); break lbl; } } } }',
         ),
+        # A ``continue`` in the statement itself loops back before the exit.
+        (
+            "python",
+            "import requests\ndef f(xs):\n    for x in xs:\n        if requests.get(x):\n"
+            "            continue\n        return\n",
+        ),
+        (
+            "typescript",
+            "async function f(xs) { for (const x of xs) { if (await fetch(x)) { continue; } return; } }",
+        ),
+        (
+            "go",
+            'package m\nimport "net/http"\nfunc f(xs []string) {\n\tfor _, x := range xs {\n'
+            "\t\tif _, e := http.Get(x); e != nil {\n\t\t\tcontinue\n\t\t}\n\t\treturn\n\t}\n}",
+        ),
+        # A ``case`` label is tested on every dispatch.
+        (
+            "typescript",
+            "async function f(xs) { for (const x of xs) { switch (x) { case await fetch(x): return; } } }",
+        ),
         # A ``return`` inside a closure run in place ends the closure, not the loop.
         (
             "typescript",
