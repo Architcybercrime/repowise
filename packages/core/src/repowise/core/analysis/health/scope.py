@@ -55,7 +55,8 @@ def parse_scope(value: str | None) -> HealthScope:
 def rows_in_scope(scope: str | None, rows: Iterable[Any]) -> list[Any]:
     """*rows* kept by *scope*: all of them, or only production code for
     ``production`` (no tests, tooling, build, vendored, generated or docs
-    example files). Unscored rows stay, so a caller still counts them."""
+    example files). A row is judged by its path and origin, never its score:
+    an unscored production row stays, so a caller still counts it."""
     if parse_scope(scope) != "production":
         return list(rows)
     # Deferred: ranking pulls in scoring and the queue, which this module stays out of.

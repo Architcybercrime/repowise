@@ -199,6 +199,8 @@ def test_production_average_covers_the_files_worst_performer_is_picked_from() ->
     assert (kpis["production_average"], kpis["production_file_count"]) == (4.0, 1)
     assert [r["file_path"] for r in rows_in_scope("production", rows)] == ["src/app.py"]
     assert rows_in_scope("all", rows) == rows
+    unscored = [{**_dict("src/b.py", 4.0), "score": None}, {**rows[0], "score": None}]
+    assert rows_in_scope("production", unscored) == unscored[:1]
     no_production = compute_kpis(rows[:4], set())
     assert (no_production["production_average"], no_production["production_file_count"]) == (
         None,
