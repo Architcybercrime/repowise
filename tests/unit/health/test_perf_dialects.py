@@ -662,6 +662,21 @@ def test_string_concat_onto_loop_variable_not_flagged(lang):
     assert ("string_concat_in_loop", "") in _hits(lang, accumulator)
 
 
+@pytest.mark.parametrize(
+    ("lang", "src", "flagged"),
+    [
+        # Every name a destructuring header binds is rebound each pass.
+        ("python", "def f(rows):\n    for k, v in rows:\n        v += 'x'\n        use(v)\n", False),
+        ("go", 'package p\nfunc f(ps []string){ for i, v := range ps { v += "x"; use(i, v) } }\n', False),
+        # A counted loop's init and a non-name target carry across passes.
+        ("go", 'package p\nfunc f(n int){ for s := ""; len(s) < n; { s += "x" } }\n', True),
+        ("python", "def f(self, items):\n    for ch in items:\n        self.ch += 'x'\n", True),
+    ],
+)
+def test_string_concat_loop_header_shapes(lang, src, flagged):
+    assert (("string_concat_in_loop", "") in _hits(lang, src)) is flagged
+
+
 def test_string_concat_onto_counted_loop_init_still_flagged():
     """A counted loop's init carries the string across passes."""
     src = 'class A { void f(int n) { for (String s = ""; s.length() < n; ) { s += "x"; } } }\n'
