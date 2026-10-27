@@ -434,6 +434,8 @@ def _walk_function_body(
         node_type = node.type
         if node_type in lmap.function_kinds:
             return
+        if _recurse_preproc_arms(node, depth, in_markup, scope):
+            return
         if tally is not None and node_type in tally.kinds.watched:
             scope = step(tally, node, scope)
 
@@ -522,16 +524,14 @@ def _walk_function_body(
             and node.type not in lmap.lambda_kinds
             and node.type not in _MARKUP_VALUE_KINDS
         )
-        if node_type in _PREPROC_CONDITIONAL_KINDS and (
-            node.child_by_field_name("alternative") is not None
-        ):
-            _recurse_preproc_arms(node, new_depth, child_markup, scope)
-            return
         for child in node.children:
             _recurse(child, new_depth, child_markup, scope)
 
-    def _recurse_preproc_arms(node: Node, depth: int, in_markup: bool, scope: int) -> None:
+    def _recurse_preproc_arms(node: Node, depth: int, in_markup: bool, scope: int) -> bool:
         """Walk a ``#if`` / ``#elif`` / ``#else`` chain, keeping the largest arm.
+
+        Returns ``True`` when ``node`` is such a chain and was walked here, so
+        ``_recurse`` does not descend into it again; ``False`` for every other node.
 
         Each arm starts from the same CCN and cognitive baseline; afterwards the
         arm with the highest (ccn, cognitive) delta is the one that stays added.
@@ -541,6 +541,10 @@ def _walk_function_body(
         exist in the source, and a flagged condition in any arm is worth showing.
         """
         nonlocal ccn, cognitive
+        if node.type not in _PREPROC_CONDITIONAL_KINDS:
+            return False
+        if node.child_by_field_name("alternative") is None:
+            return False
         base_ccn, base_cognitive = ccn, cognitive
         best_ccn, best_cognitive = 0, 0
         arm: Node | None = node
@@ -556,6 +560,7 @@ def _walk_function_body(
             )
             arm = alternative
         ccn, cognitive = base_ccn + best_ccn, base_cognitive + best_cognitive
+        return True
 
     root_scope = 0
     if (
