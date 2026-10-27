@@ -171,8 +171,25 @@ def is_signature_fixed(fn_node: Node, lmap: LanguageNodeMap) -> bool:
     return (
         _in_trait_impl(fn_node, lmap)
         or _is_public_api(fn_node, lmap)
+        or _in_fixed_abi(fn_node, lmap)
         or _overrides_local_base(fn_node, lmap)
     )
+
+
+def _in_fixed_abi(fn_node: Node, lmap: LanguageNodeMap) -> bool:
+    """Inside a block whose ABI fixes the parameter list (C++ ``extern "C"``)."""
+    if not lmap.fixed_abi_kinds:
+        return False
+    node = fn_node.parent
+    # A member function keeps C++ linkage even inside an ``extern "C"`` block.
+    stops = lmap.function_kinds | lmap.class_kinds
+    while node is not None and node.type not in stops:
+        if node.type in lmap.fixed_abi_kinds:
+            # ``extern "C++" {`` re-enters C++ linkage inside an ``extern "C"`` header.
+            value = node.child_by_field_name("value")
+            return value is None or _text(value) != '"C++"'
+        node = node.parent
+    return False
 
 
 def _class_of_method(fn_node: Node, lmap: LanguageNodeMap) -> Node | None:
