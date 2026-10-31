@@ -3403,6 +3403,12 @@ export interface PeriodHealthSummaryResponse {
   net_findings: number;
 }
 
+/** Result of pinning a file's doc (issue #812). */
+export interface PinDocResponse {
+  file_path: string;
+  pinned: boolean;
+}
+
 /** A function's stored size measures; an absent one was not measured. */
 export interface PlanMeasuresResponse {
   ccn?: number | null;
@@ -3868,6 +3874,28 @@ export interface RepoUpdate {
 
 export interface ReposSummaryResponse {
   repos: RepoSummaryRow[];
+}
+
+export interface RetiredPageDetail {
+  archive_id: string;
+  page_id: string;
+  repository_id: string;
+  retired_at: string;
+  reason: string;
+  superseded_by: string | null;
+  title: string;
+  page: Record<string, unknown>;
+  versions: Record<string, unknown>[];
+}
+
+export interface RetiredPageSummary {
+  archive_id: string;
+  page_id: string;
+  repository_id: string;
+  retired_at: string;
+  reason: string;
+  superseded_by: string | null;
+  title: string;
 }
 
 export interface ReviewerEntry {
@@ -4644,6 +4672,14 @@ export interface WorkspaceCoChangeEntry {
   strength: number;
   frequency: number;
   last_date: string;
+  evidence?: WorkspaceCoChangeEvidence | null;
+}
+
+/** Bounded supporting evidence for one co-change pair (#483). */
+export interface WorkspaceCoChangeEvidence {
+  authors?: string[];
+  commit_pairs?: Record<string, unknown>[];
+  max_gap_hours?: number;
 }
 
 /** What declared structure connects one co-changing file pair. */
@@ -5265,6 +5301,27 @@ export interface WorkspaceUnresolvedLink {
   detail?: string | null;
 }
 
+export interface ZoomContainerResponse {
+  id: string;
+  name: string;
+  path?: string;
+  kind: string;
+  technologies?: string[];
+  file_count?: number;
+}
+
+export interface ZoomExternalResponse {
+  id: string;
+  name: string;
+  display_name: string;
+  kind: string;
+  category: string;
+  io_kind?: string | null;
+  ecosystem?: string;
+  file_count?: number;
+  edge_count?: number;
+}
+
 export interface ZoomMapResponse {
   root_id: string;
   project_name: string;
@@ -5274,6 +5331,9 @@ export interface ZoomMapResponse {
   truncated?: boolean;
   nodes: ZoomNodeResponse[];
   relations: ZoomRelationResponse[];
+  externals?: ZoomExternalResponse[];
+  external_relations?: ZoomRelationResponse[];
+  containers?: ZoomContainerResponse[];
 }
 
 export interface ZoomMetricsResponse {
@@ -5305,6 +5365,8 @@ export interface ZoomNodeResponse {
   is_dead?: boolean;
   is_test?: boolean;
   on_flow?: boolean;
+  technologies?: string[];
+  container_ids?: string[];
 }
 
 export interface ZoomRelationResponse {

@@ -305,6 +305,15 @@ class LanguageNodeMap:
     #     block's tail expression (the implicit value an extraction would
     #     silently drop), so only truly expression-oriented grammars may map it.
     statement_wrapper_kinds: frozenset[str] = frozenset()
+    #   * ``single_statement_bodies`` -- a loop, branch or ``with`` body may be
+    #     one bare statement rather than a container (Pascal's ``for I := 1 to N
+    #     do X := X + I;``), so a body outside ``block_kinds`` is that statement,
+    #     not a list of its children. Its branches are the ``then`` / ``else``
+    #     fields.
+    #   * ``structure_token_kinds`` -- named keyword nodes a container holds
+    #     beside its statements (Pascal's ``kBegin`` / ``kEnd``), never statements.
+    single_statement_bodies: bool = False
+    structure_token_kinds: frozenset[str] = frozenset()
     #   * ``value_passthrough_kinds`` -- nodes a block's value flows through
     #     unchanged on its way out (Rust ``if`` / ``else`` / ``match`` arms), so
     #     the slicer can tell whether an unterminated tail statement's value is
@@ -577,6 +586,7 @@ _JAVA = LanguageNodeMap(
     function_kinds=frozenset({"method_declaration", "constructor_declaration"}),
     lambda_kinds=frozenset({"lambda_expression"}),
     branch_kinds=frozenset({"if_statement", "ternary_expression"}),
+    flat_ternary_kinds=frozenset({"ternary_expression"}),
     loop_kinds=frozenset(
         {
             "for_statement",
@@ -895,6 +905,7 @@ _DART = LanguageNodeMap(
     # ``if_element`` is the collection-literal ``if`` (``[if (x) y]``);
     # ``conditional_expression`` is the ternary.
     branch_kinds=frozenset({"if_statement", "conditional_expression", "if_element"}),
+    flat_ternary_kinds=frozenset({"conditional_expression"}),
     loop_kinds=frozenset({"for_statement", "while_statement", "do_statement", "for_element"}),
     try_kinds=frozenset({"try_statement"}),
     # A bare ``on FormatException {}`` arm without ``catch`` has no
@@ -934,6 +945,7 @@ _CPP = LanguageNodeMap(
     function_kinds=frozenset({"function_definition"}),
     lambda_kinds=frozenset({"lambda_expression"}),
     branch_kinds=frozenset({"if_statement", "conditional_expression"}),
+    flat_ternary_kinds=frozenset({"conditional_expression"}),
     loop_kinds=frozenset({"for_statement", "while_statement", "do_statement", "for_range_loop"}),
     foreach_kinds=frozenset({"for_range_loop"}),
     try_kinds=frozenset({"try_statement"}),
@@ -1001,6 +1013,7 @@ _C = LanguageNodeMap(
     function_kinds=frozenset({"function_definition"}),
     lambda_kinds=frozenset(),
     branch_kinds=frozenset({"if_statement", "conditional_expression"}),
+    flat_ternary_kinds=frozenset({"conditional_expression"}),
     loop_kinds=frozenset({"for_statement", "while_statement", "do_statement"}),
     try_kinds=frozenset(),
     catch_kinds=frozenset(),
@@ -1056,6 +1069,7 @@ _CSHARP = LanguageNodeMap(
     ),
     lambda_kinds=frozenset({"lambda_expression"}),
     branch_kinds=frozenset({"if_statement", "conditional_expression"}),
+    flat_ternary_kinds=frozenset({"conditional_expression"}),
     loop_kinds=frozenset({"for_statement", "while_statement", "foreach_statement", "do_statement"}),
     foreach_kinds=frozenset({"foreach_statement"}),
     try_kinds=frozenset({"try_statement"}),
@@ -1386,6 +1400,23 @@ _PASCAL = LanguageNodeMap(
     # ``Obj.Foo(x)`` (``entity`` is an ``exprDot``). Feeds the perf pass
     # (``perf/dialects/pascal.py``).
     call_kinds=frozenset({"exprCall"}),
+    # ``X := ...`` and FPC's ``X += ...`` are both ``assignment`` (the dialect
+    # tells them apart by the operator node). Locals live in the routine's
+    # ``var`` section, outside the body, and an inline ``var X := 1`` is an
+    # assignment, so no statement is a local declaration.
+    assignment_kinds=frozenset({"assignment"}),
+    local_decl_kinds=frozenset(),
+    self_identifiers=frozenset({"Self"}),
+    member_access_kinds=frozenset({"exprDot"}),
+    # ``Exit`` / ``Exit(X)``, ``Halt``, ``Abort``, ``Break`` and ``Continue``
+    # are ordinary identifiers and calls, so they are named here: a span
+    # holding one is never lifted out, whose helper would jump from itself.
+    exit_macro_kinds=frozenset({"statement", "exprCall"}),
+    exit_macro_names=frozenset({"exit", "halt", "abort", "break", "continue"}),
+    single_statement_bodies=True,
+    structure_token_kinds=frozenset(
+        {"kBegin", "kEnd", "kTry", "kExcept", "kFinally", "kRepeat", "kUntil", "kDo", "kThen", "kElse"}
+    ),
     # A parenless call to a zero-argument procedure (``Q.Open;`` / ``Close;``)
     # has no ``exprCall`` node at all -- it is a bare ``identifier`` or
     # ``exprDot`` sitting directly under a ``statement`` wrapper (the same
@@ -1453,6 +1484,7 @@ _OBJC = LanguageNodeMap(
     # its complexity now that ``declaration`` is not a function kind.
     lambda_kinds=frozenset({"block_literal"}),
     branch_kinds=frozenset({"if_statement", "conditional_expression"}),
+    flat_ternary_kinds=frozenset({"conditional_expression"}),
     # Fast enumeration parses as ``for_statement``; there is no
     # ``for_in_statement`` node in this grammar.
     loop_kinds=frozenset({"for_statement", "while_statement", "do_statement"}),
@@ -1484,6 +1516,7 @@ _PHP = LanguageNodeMap(
     function_kinds=frozenset({"function_definition", "method_declaration"}),
     lambda_kinds=frozenset({"anonymous_function", "arrow_function"}),
     branch_kinds=frozenset({"if_statement", "else_if_clause", "conditional_expression"}),
+    flat_ternary_kinds=frozenset({"conditional_expression"}),
     loop_kinds=frozenset({"for_statement", "foreach_statement", "while_statement", "do_statement"}),
     foreach_kinds=frozenset({"foreach_statement"}),
     try_kinds=frozenset({"try_statement"}),

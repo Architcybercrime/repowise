@@ -61,6 +61,10 @@ repos and the primary repo (the default for MCP queries), and `m` adds a model.
 It then indexes each repo, runs the cross-repo analysis, and registers the MCP
 server with your editors.
 
+Run `repowise init` inside one repo whose folder holds other git repos and it
+indexes that repo alone, with a note naming `repowise init "<parent folder>"`
+for the workspace. `--no-workspace` hides the note.
+
 To skip the screen, `--repos api,web` indexes only those repos (by alias,
 directory name, or relative path). In a new workspace the first one listed is
 primary; an existing workspace keeps its primary. `--yes`, `--all` or a piped
@@ -144,7 +148,7 @@ Scans source files for HTTP routes, gRPC services, database tables, message topi
 | Java / Kotlin | Spring, JAX-RS, Micronaut, Ktor server routing (Kotlin), Javalin (`app.get`, v7 `config.routes`, `ApiBuilder` paths) | Feign (`@RequestLine`, and `@FeignClient` with Spring MVC annotations, its `name` read as the host), Spring `@HttpExchange` interfaces, Spring `WebClient` and `RestClient`, `RestTemplate` (also through a getter or a `RequestEntity`), `java.net.http`, Apache HttpClient (`new HttpPost(url)`, with a base URL passed to a helper's constructor in another file), MicroProfile `@RegisterRestClient` interfaces, Ktor (Kotlin) |
 | Go | gin, echo, chi, fiber, gorilla/mux, net/http (Go 1.22 method patterns) | net/http |
 | C# | ASP.NET (attribute and minimal API) | HttpClient (`GetAsync`, `GetFromJsonAsync`, `PostAsJsonAsync`, `GetStringAsync`, `new HttpRequestMessage(HttpMethod.X, url)`; a URL held in a local or a `const` / `readonly` field; `new Uri(base, path)` and `CombineUri` joins; typed, named and Refit client `BaseAddress`; HttpClient wrapper methods), Refit attributes, YARP `MapForwarder`, UnityWebRequest, Best.HTTP |
-| Ruby | | HTTParty, RestClient, Faraday, Net::HTTP |
+| Ruby | Rails (`config/routes.rb`), Sinatra, Grape | HTTParty, RestClient, Faraday, Net::HTTP |
 | Rust | Axum, Actix, Rocket | reqwest |
 | Apex | `@RestResource` classes (`/services/apexrest` + `urlMapping`) | `HttpRequest` callouts (literal endpoint and verb) |
 | C# (Azure Functions) | `[HttpTrigger]` routes under the default `/api` prefix; the function name when no `Route` is set | |
@@ -616,6 +620,8 @@ Add these to your `.gitignore`:
 ```
 
 The workspace config and data are local: they can reference absolute paths and contain generated analysis that should be rebuilt per-machine.
+
+When the workspace folder is a git repo or sits inside one, `repowise init .` adds `.repowise-workspace.yaml` and `.repowise-workspace/` (anchored to the folder) to that repo's `.git/info/exclude`, so `git status` stays clean without a shared `.gitignore` change. A path your `.gitignore` already covers is left alone. To share conformance rules with CI, commit the config once with `git add -f .repowise-workspace.yaml`; git then tracks it despite the exclude line.
 
 ---
 
